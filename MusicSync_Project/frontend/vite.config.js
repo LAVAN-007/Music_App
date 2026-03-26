@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   define: { global: 'window' },
   server: {
+    allowedHosts: true,
     proxy: {
       '/api': 'http://localhost:8080',
       '/ws-music': {
