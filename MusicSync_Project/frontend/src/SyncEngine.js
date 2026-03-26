@@ -16,10 +16,10 @@ export const setupWebSocket = (LAPTOP_IP, onConnect, onMessage) => {
         heartbeatOutgoing: 10000,
         reconnectDelay: 5000,
         onConnect: () => {
-            onConnect();
             client.subscribe('/topic/state', (msg) => {
                 onMessage(JSON.parse(msg.body));
             });
+            onConnect(); // send JOIN after subscribing so we don't miss the PRESENCE response
         },
     });
     client.activate();
