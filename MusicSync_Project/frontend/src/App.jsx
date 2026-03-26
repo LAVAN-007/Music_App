@@ -135,7 +135,7 @@ function App() {
 
   // --- CONNECT TO BACKEND ---
   const doConnect = (user) => {
-    fetch(`http://${LAPTOP_IP}:8080/api/songs`)
+    fetch(`/api/songs`)
       .then(res => res.json())
       .then(data => {
         const unique = Array.from(new Map(data.map(s => [s.id, s])).values());
@@ -143,7 +143,6 @@ function App() {
         allSongsRef.current = unique;
 
         const client = setupWebSocket(
-          LAPTOP_IP,
           () => {
             setStatus(`Connected`);
             client.publish({

@@ -8,8 +8,8 @@ export const decodeHTMLEntities = (text) => {
     return textArea.value;
 };
 
-export const setupWebSocket = (LAPTOP_IP, onConnect, onMessage) => {
-    const socket = new SockJS(`http://${LAPTOP_IP}:8080/ws-music`);
+export const setupWebSocket = (onConnect, onMessage) => {
+    const socket = new SockJS(`/ws-music`);
     const client = new Client({
         webSocketFactory: () => socket,
         heartbeatIncoming: 10000,
