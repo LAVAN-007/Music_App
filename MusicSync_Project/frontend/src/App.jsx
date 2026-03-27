@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { setupWebSocket } from './SyncEngine';
 import Sidebar from './components/Sidebar';
 import PlayerControls from './components/PlayerControls';
+import Chat from './components/Chat';
 import './App.css';
 
 const LAPTOP_IP = window.location.hostname;
@@ -17,6 +18,10 @@ function App() {
   const [currentSong, setCurrentSong] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [status, setStatus] = useState('Connecting...');
+  const [messages, setMessages] = useState([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [unreadChat, setUnreadChat] = useState(0);
 
   const stompClient = useRef(null);
   const audioRef = useRef(null);
@@ -30,6 +35,16 @@ function App() {
   useEffect(() => { allSongsRef.current = allSongs; }, [allSongs]);
   useEffect(() => { currentSongRef.current = currentSong; }, [currentSong]);
   useEffect(() => { usernameRef.current = username; }, [username]);
+
+  // Keep --vvh CSS var in sync with visual viewport so chat input stays above keyboard
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => document.documentElement.style.setProperty('--vvh', `${vv.height}px`);
+    update();
+    vv.addEventListener('resize', update);
+    return () => vv.removeEventListener('resize', update);
+  }, []);
 
   // Apply pending sync once the player mounts (audioRef becomes available)
   useEffect(() => {
@@ -95,6 +110,19 @@ function App() {
   // --- HANDLE INCOMING WS MESSAGES ---
   const handleIncomingMessage = (data) => {
     const songs = allSongsRef.current;
+
+    if (data.action === 'CHAT') {
+      if (data.username?.toLowerCase() !== usernameRef.current?.toLowerCase()) {
+        setMessages(prev => [...prev, {
+          id: Date.now(),
+          username: data.username,
+          text: data.message,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }]);
+        setUnreadChat(prev => prev + 1);
+      }
+      return;
+    }
 
     if (data.action === 'PRESENCE') {
       const users = data.connectedUsers || [];
@@ -195,6 +223,28 @@ function App() {
     sessionStorage.setItem('musicSyncUser', displayName);
     setAppState('waiting');
     doConnect(displayName);
+  };
+
+  // --- SEND CHAT MESSAGE ---
+  const sendMessage = (text) => {
+    if (!stompClient.current?.connected) return;
+    setMessages(prev => [...prev, {
+      id: Date.now(),
+      username: usernameRef.current,
+      text,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }]);
+    stompClient.current.publish({
+      destination: '/app/sync',
+      body: JSON.stringify({
+        action: 'CHAT',
+        message: text,
+        username: usernameRef.current,
+        songId: 0,
+        timestamp: 0,
+        playing: false
+      })
+    });
   };
 
   // --- NAVIGATION ---
@@ -335,16 +385,50 @@ function App() {
   }
 
   // ===== PLAYER =====
+  const closeDrawers = () => { setSidebarOpen(false); setChatOpen(false); };
+
   return (
     <div className="music-app">
-      <Sidebar
-        searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
-        filteredSongs={filteredSongs}
-        currentSong={currentSong}
-        sendSyncAction={sendSyncAction}
-        handleLogout={handleLogout}
-      />
+      {/* Mobile top bar — hidden on desktop */}
+      <div className="mobile-topbar">
+        <button className="topbar-btn" onClick={() => setSidebarOpen(o => !o)}>
+          <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
+            <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+          </svg>
+        </button>
+        <span className="topbar-title">🎵 Music Sync</span>
+        <button className="topbar-btn" onClick={() => { setChatOpen(o => !o); setUnreadChat(0); }}>
+          <svg viewBox="0 0 24 24" fill="currentColor" width="22" height="22">
+            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+          </svg>
+          {unreadChat > 0 && <span className="topbar-badge">{unreadChat}</span>}
+        </button>
+      </div>
+
+      {/* Backdrop — closes any open drawer */}
+      {(sidebarOpen || chatOpen) && (
+        <div className="drawer-backdrop" onClick={closeDrawers} />
+      )}
+
+      {/* Sidebar — desktop: static column | mobile: left drawer */}
+      <div className={`sidebar-drawer${sidebarOpen ? ' open' : ''}`}>
+        <Sidebar
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          filteredSongs={filteredSongs}
+          allSongs={allSongs}
+          currentSong={currentSong}
+          sendSyncAction={sendSyncAction}
+          handleLogout={handleLogout}
+          onClose={closeDrawers}
+        />
+      </div>
+
+      {/* Chat — desktop: static column | mobile: right drawer */}
+      <div className={`chat-drawer${chatOpen ? ' open' : ''}`}>
+        <Chat messages={messages} sendMessage={sendMessage} username={username} onClose={closeDrawers} />
+      </div>
+
       <div className="main-content">
         {currentSong ? (
           <PlayerControls

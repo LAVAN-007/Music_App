@@ -56,6 +56,9 @@ public class SyncController {
                 stateMsg.setConnectedUsers(new HashSet<>(sessionToUser.values()));
                 messagingTemplate.convertAndSend("/topic/state", stateMsg);
             }
+        } else if ("CHAT".equals(message.getAction())) {
+            // Chat messages — broadcast as-is, do not touch playback state
+            messagingTemplate.convertAndSend("/topic/state", message);
         } else {
             // PLAY / PAUSE / etc — update state and broadcast
             if (message.getSongId() != null && message.getSongId() > 0) currentSongId = message.getSongId();

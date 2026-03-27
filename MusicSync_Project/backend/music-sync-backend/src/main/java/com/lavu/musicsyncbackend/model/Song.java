@@ -13,4 +13,5 @@ public class Song {
     private String artist;
     private String url;
     private String thumbnail;
+    private String category;
 }
