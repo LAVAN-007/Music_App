@@ -2,9 +2,11 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { setupWebSocket } from './SyncEngine';
 import Sidebar from './components/Sidebar';
 import PlayerControls from './components/PlayerControls';
+import { Menu, X } from 'lucide-react';
 import './App.css';
 
 function App() {
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [allSongs, setAllSongs] = useState([]);
   const [currentSong, setCurrentSong] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
@@ -15,7 +17,7 @@ function App() {
   const audioRef = useRef(null);
   const lastSentTime = useRef(0);
 
-  const LAPTOP_IP = "192.168.43.148";
+  //const LAPTOP_IP = "192.168.43.148";
 
   // --- 1. SEND ACTION ---
   const sendSyncAction = useCallback((action, songId = null, timestamp = null) => {
@@ -27,7 +29,8 @@ function App() {
         action,
         timestamp: timestamp !== null ? timestamp : (audioRef.current?.currentTime || 0),
         songId: songId || currentSong?.id,
-        username
+        username,
+          duration: audioRef.current?.duration || 0
       };
       stompClient.current.publish({ destination: '/app/sync', body: JSON.stringify(payload) });
     }
@@ -35,28 +38,40 @@ function App() {
 
   // --- 2. SYNC HANDLER (The "Full Data" Version) ---
   const handleIncomingSync = useCallback((data, freshSongsList) => {
+    console.log("In Handler - Data:", data);
     if (!audioRef.current) return;
 
-    // Use the freshSongsList passed from useEffect to avoid "Empty List" bugs
     const listToUse = freshSongsList || allSongs;
+    // 🔥 Type safety: String comparison
     const incoming = listToUse.find(s => String(s.id) === String(data.songId));
 
     if (incoming) {
       const isDifferent = !currentSong || String(currentSong.id) !== String(incoming.id);
+
       if (isDifferent) {
         setCurrentSong(incoming);
         audioRef.current.src = incoming.url;
         audioRef.current.load();
         audioRef.current.oncanplay = () => {
           audioRef.current.currentTime = data.timestamp;
-          if (data.action === "PLAY") audioRef.current.play().catch(() => {});
+          if (data.action === "PLAY") {
+            audioRef.current.play().catch(e => console.log("Play blocked:", e));
+          }
           audioRef.current.oncanplay = null;
         };
       } else {
-        if (Math.abs(audioRef.current.currentTime - data.timestamp) > 1.2) {
+        // Same song, just sync time
+        const isCurrentlyPlaying = !audioRef.current.paused;
+        if (Math.abs(audioRef.current.currentTime - data.timestamp) > 1.5) {
           audioRef.current.currentTime = data.timestamp;
         }
-        data.action === "PLAY" ? audioRef.current.play().catch(() => {}) : audioRef.current.pause();
+
+        if (data.action === "PLAY" && !isCurrentlyPlaying) {
+          audioRef.current.play().catch(e => console.log("Play error:", e));
+        }
+        else if (data.action === "PAUSE" && isCurrentlyPlaying) {
+          audioRef.current.pause();
+        }
       }
     }
   }, [allSongs, currentSong]);
@@ -65,18 +80,25 @@ function App() {
   useEffect(() => {
     if (!isLoggedIn) return;
 
-    fetch(`http://${LAPTOP_IP}:8080/api/songs`)
+    fetch(`/api/songs`)
         .then(res => res.json())
         .then(data => {
-          const uniqueSongs = Array.from(new Map(data.map(s => [s.id, s])).values());
-          setAllSongs(uniqueSongs); // Save to state
-          setCurrentSong(prev => prev || uniqueSongs[0]);
+            const uniqueSongs = Array.from(new Map(data.map(s => [s.id, s])).values());
+            const finalSongs = uniqueSongs.map(song => ({
+                ...song,
+                // Backend-la 'thumbnail' nu irundha adha 'poster' ku assign pannunga
+                poster: song.poster || song.thumbnail || "https://via.placeholder.com/150"
+            }));
+            setAllSongs(finalSongs); // Save to state
+            setCurrentSong(finalSongs[0]);
 
           // Connect WebSocket and pass the data directly to the handler
           const client = setupWebSocket(
-              LAPTOP_IP,
+              username,
               () => setStatus(`Synced as ${username}`),
-              (msg) => handleIncomingSync(msg, uniqueSongs) // Pass the actual list here
+              (msg) => {
+                handleIncomingSync(msg, finalSongs);
+              }
           );
           stompClient.current = client;
         })
@@ -84,7 +106,7 @@ function App() {
 
     return () => stompClient.current?.deactivate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, LAPTOP_IP]);
+  }, [isLoggedIn, username]);
 
   // --- 4. NAVIGATION ---
   const playNext = () => {
@@ -111,8 +133,10 @@ function App() {
     return (
         <div className="login-screen">
           <div className="login-card">
-            <h1>🎵 Tamil Sync</h1>
-            <input type="text" placeholder="Name..." className="login-input" onChange={(e) => setUsername(e.target.value)} />
+            <h1>Music Sync</h1>
+            <input type="text" placeholder="Name..." className="login-input"
+                   onChange={(e) => setUsername(e.target.value)}
+                   onKeyPress={(e) => e.key === 'Enter' && username && setIsLoggedIn(true)}/>
             <button className="login-button" onClick={() => username && setIsLoggedIn(true)}>Join</button>
           </div>
         </div>
@@ -121,17 +145,27 @@ function App() {
 
   return (
       <div className="music-app">
+        {/* Hamburger Icon */}
+        <audio ref={audioRef} />
+        <button className="menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+          {isSidebarOpen ? <X size={30} /> : <Menu size={30} />}
+        </button>
+        <div className={`sidebar-overlay ${isSidebarOpen ? 'open' : ''}`}>
         <Sidebar
             searchTerm={searchTerm}
             setSearchTerm={setSearchTerm}
             filteredSongs={filteredSongs}
             currentSong={currentSong}
-            sendSyncAction={sendSyncAction}
+            sendSyncAction={(action, id) => {
+              sendSyncAction(action, id, 0);
+              setIsSidebarOpen(false); // Mobile-kaaga auto-close
+            }}
         />
+        </div>
         <div className="main-content">
           {currentSong ? (
               <PlayerControls audioRef={audioRef} currentSong={currentSong} playNext={playNext} playPrev={playPrev} sendSyncAction={sendSyncAction} status={status} />
-          ) : <div className="loading">Loading...</div>}
+          ) : <div className="loading blue-glow">Loading Songs...</div>}
         </div>
       </div>
   );

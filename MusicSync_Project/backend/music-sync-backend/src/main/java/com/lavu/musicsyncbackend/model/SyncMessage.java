@@ -12,4 +12,5 @@ public class SyncMessage {
     private double timestamp;
     private int songId;
     private String username;
+    private Double duration;
 }

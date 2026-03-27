@@ -1,221 +1,269 @@
-:root {
-    --bg-black: #080808;
-    --bg-sidebar: #000000;
-    --bg-card: #121212;
-    --spotify-green: #1db954;
-    --text-main: #ffffff;
-    --text-dim: #b3b3b3;
-}
+/* Google Fonts Import */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-    margin: 0;
-    background-color: var(--bg-black);
-    color: var(--text-main);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    overflow: hidden; /* Prevents whole page scroll */
+    background-color: #000;
+    color: #fff;
+    font-family: 'Poppins', sans-serif;
+    overflow: hidden;
+    height: 100vh;
 }
 
-/* --- MAIN LAYOUT --- */
+/* --- Login Screen --- */
+.login-screen {
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(circle at center, #111 0%, #000 100%);
+}
+
+.login-card {
+    background: #0a0a0a;
+    padding: 40px;
+    border-radius: 20px;
+    border: 1px solid #00d2ff;
+    box-shadow: 0 0 30px rgba(0, 210, 255, 0.2);
+    text-align: center;
+    width: 90%;
+    max-width: 350px;
+}
+
+.login-card h1 {
+    color: #00d2ff;
+    margin-bottom: 25px;
+    text-shadow: 0 0 10px #00d2ff;
+}
+
+.login-input {
+    width: 100%;
+    padding: 12px;
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    color: white;
+    margin-bottom: 20px;
+    outline: none;
+}
+
+.login-input:focus { border-color: #00d2ff; }
+
+.login-button {
+    width: 100%;
+    padding: 12px;
+    background: #00d2ff;
+    border: none;
+    border-radius: 8px;
+    color: #000;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 0 15px rgba(0, 210, 255, 0.4);
+}
+
+/* --- Music App Layout --- */
 .music-app {
     display: flex;
     height: 100vh;
     width: 100vw;
-}
-
-/* --- SIDEBAR & SEARCH --- */
-.sidebar {
-    width: 320px;
-    min-width: 320px;
-    background-color: var(--bg-sidebar);
-    border-right: 1px solid #222;
-    display: flex;
-    flex-direction: column;
-    padding: 24px;
-    box-sizing: border-box;
-}
-
-.search-container {
+    justify-content: center;
+    align-items: center;
     position: relative;
-    width: 100%;
-    margin-bottom: 20px;
 }
 
-.search-bar {
-    background: #181818;
-    border: 1px solid #333;
-    padding: 12px 40px 12px 12px; /* Space on right for 'X' */
-    border-radius: 8px;
-    color: white;
-    width: 100%;
-    box-sizing: border-box;
-    outline: none;
-    transition: border-color 0.2s;
-}
-
-.search-bar:focus {
-    border-color: var(--spotify-green);
-}
-
-.clear-search {
+.menu-btn {
     position: absolute;
-    right: 12px;
-    top: 50%;
-    transform: translateY(-50%);
+    top: 20px;
+    left: 20px;
+    background: none;
+    border: none;
+    color: #00d2ff;
+    cursor: pointer;
+    z-index: 1100;
+}
+
+/* Sidebar Responsive */
+.sidebar-overlay {
+    position: fixed;
+    left: -100%;
+    top: 0;
+    width: 280px;
+    height: 100vh;
+    background: #0a0a0a;
+    border-right: 1px solid #00d2ff;
+    transition: 0.3s ease;
+    z-index: 1000;
+    padding: 70px 20px 20px 20px;
+    overflow-y: auto;
+}
+
+.sidebar-overlay.open { left: 0; }
+
+/* Sidebar Header */
+.sidebar-title {
+    color: #00d2ff;
+    font-size: 1.4rem;
+    margin-bottom: 25px;
+    text-shadow: 0 0 10px rgba(0, 210, 255, 0.5);
+}
+
+/* Search Wrapper Styling */
+.search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    background: #1a1a1a;
+    border-radius: 10px;
+    padding: 0 12px;
+    margin-bottom: 25px;
+    border: 1px solid #333;
+}
+
+.sidebar-search-bar {
+    width: 100%;
+    padding: 12px 8px;
     background: transparent;
     border: none;
-    color: var(--text-dim);
-    font-size: 18px;
-    cursor: pointer;
-    padding: 5px;
-    line-height: 1;
-}
-
-.clear-search:hover {
     color: white;
-}
-
-.song-list {
-    overflow-y: auto;
-    flex-grow: 1;
-}
-
-.song-list::-webkit-scrollbar { display: none; }
-
-.song-item {
-    padding: 12px;
-    cursor: pointer;
-    border-radius: 6px;
-    margin-bottom: 6px;
-    transition: background 0.2s;
-}
-
-.song-item:hover { background: #181818; }
-.song-item.active {
-    background: #282828;
-    border-left: 4px solid var(--spotify-green);
-    color: var(--spotify-green);
-}
-
-.no-results {
-    text-align: center;
-    color: var(--text-dim);
-    font-size: 0.9rem;
-    margin-top: 20px;
-}
-
-/* --- PLAYER UI --- */
-.main-content {
-    flex-grow: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: linear-gradient(to bottom, #181818, #080808);
-}
-
-.player-card {
-    text-align: center;
-    max-width: 420px;
-    width: 100%;
-    padding: 20px;
-}
-
-.player-card img {
-    width: 100%;
-    aspect-ratio: 1/1;
-    border-radius: 12px;
-    object-fit: cover;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-    margin-bottom: 24px;
-}
-
-.player-card h1 { font-size: 1.8rem; margin: 0 0 8px 0; }
-.player-card h3 { color: var(--text-dim); font-weight: 400; margin: 0 0 24px 0; }
-
-.audio-element {
-    width: 100%;
-    margin: 20px 0;
-}
-
-.controls button {
-    background: white;
-    color: black;
-    border: none;
-    padding: 12px 28px;
-    border-radius: 30px;
-    font-weight: bold;
-    cursor: pointer;
-    margin: 0 8px;
-    transition: transform 0.1s, background 0.2s;
-}
-
-.controls button:hover {
-    transform: scale(1.05);
-    background: var(--spotify-green);
-    color: white;
-}
-
-.status-tag {
-    margin-top: 20px;
-    font-size: 0.8rem;
-    color: var(--spotify-green);
-    letter-spacing: 1px;
-}
-
-/* --- LOGIN SCREEN --- */
-.login-screen {
-    height: 100vh;
-    width: 100vw;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    background: black;
-}
-
-.login-card {
-    background: #121212;
-    padding: 50px;
-    border-radius: 16px;
-    text-align: center;
-    border: 1px solid #333;
-    width: 350px;
-}
-
-.login-input {
-    padding: 14px;
-    width: 100%;
-    box-sizing: border-box;
-    margin-bottom: 25px;
-    background: #181818;
-    border: 1px solid #444;
-    color: white;
-    border-radius: 8px;
     outline: none;
 }
 
-.login-input:focus { border-color: var(--spotify-green); }
+.search-icon { color: #555; }
+.clear-btn { background: none; border: none; color: #00d2ff; cursor: pointer; }
 
-.login-button {
-    display: block;
-    width: 100%;
-    padding: 14px;
-    background: var(--spotify-green);
-    color: white;
-    border: none;
-    font-weight: bold;
-    border-radius: 30px;
+/* Song List Styling */
+.song-scroll-container {
+    height: calc(100vh - 180px);
+    overflow-y: auto;
+}
+
+/* Scrollbar styling for a cleaner look */
+.song-scroll-container::-webkit-scrollbar { width: 5px; }
+.song-scroll-container::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+
+.sidebar-song-item {
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 8px;
     cursor: pointer;
+    transition: 0.2s;
+    border-left: 3px solid transparent;
 }
 
-/* --- RESPONSIVE --- */
-@media (max-width: 850px) {
-    .music-app { flex-direction: column; }
-    .sidebar { width: 100%; height: 40vh; min-width: 100%; }
-    .main-content { height: 60vh; padding: 20px; }
-    .player-card img { width: 220px; }
-    .player-card h1 { font-size: 1.4rem; }
+.sidebar-song-item:hover { background: #111; border-left-color: #333; }
+
+/* Active Song Highlight */
+.active-blue {
+    background: rgba(0, 210, 255, 0.1) !important;
+    border-left-color: #00d2ff !important;
 }
 
-.loading {
-    color: var(--spotify-green);
-    font-size: 1.2rem;
+.active-blue .song-name { color: #00d2ff; }
+
+.artist-name { font-size: 0.8rem; color: #777; margin-top: 3px; }
+.playing-indicator { font-size: 0.6rem; color: #00d2ff; text-transform: uppercase; margin-top: 5px; }
+
+/* Player UI */
+.main-content {
+    text-align: center;
+    width: 90%;
+    max-width: 500px;
+}
+
+/* App.css kulla check for this block and replace it */
+.album-art-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 25px;
+    width: 100%; /* Important for centering */
+}
+
+/* 🖼️ THE REFIX: Size explicitly specified for the img tag directly */
+.player-poster {
+    width: 190px; /* Force the size explicitly */
+    height: 190px; /* Force the size explicitly */
+    max-width: 190px;
+    max-height: 190px;
+    border-radius: 12px;
+    object-fit: cover; /* Important to avoid stretching */
+    box-shadow: 0 0 25px rgba(0, 210, 255, 0.4);
+    display: block; /* Ensure it's not hidden */
+    margin: 0 auto; /* Center within the container */
+}
+
+.blue-glow {
+    color: #fff;
+    text-shadow: 0 0 10px #00d2ff;
+    margin-bottom: 10px;
+}
+
+/* App.css kulla add this ProgressBar style explicitly implement strictly ProgressBar structure implicitly implement structure: */
+.progress-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 15px; /* Space between time and line strictly progress percent */
+    margin: 20px auto; /* Centered between poster and buttons strictly percent */
+    width: 100%;
+    max-width: 400px; /* Limit width explicitly trigger Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent explicitly explicitly trigger */
+}
+
+/* Base line strictly implicitly implement ProgressBar structure logic */
+.progress-bar-base {
+    flex-grow: 1; /* Stretch ProgressBar structure */
+    height: 6px;
+    background-color: #333; /* Dark track */
+    border-radius: 10px;
+    overflow: hidden; /* Important for filling structure implicitly strictly fill fill fill explicitly trigger */
+    position: relative;
+}
+
+/* Blue filling line strictly strictly calculate percent strictly percent explicitly fill explicitly strictly calculate percent fill Percent strictly fill explicitly trigger fill explicit strictly Percent implicitly explicitly triggering */
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #3a7bd5 0%, #00d2ff 100%); /* Blue gradient structurally structure explicit strictly fill Percent explicit strictly fill explicit */
+    border-radius: 10px;
+    transition: width 0.1s linear; /* Smooth movement implicit strictly implicitly smoothly movement smoothly movement smoothly smooth smooth movement explicitly triggering smoothly smooth smooth movement explicit strictly Percent implicit explicitly structure smoothly explicit triggering Percent smoothly structure explicit structural triggering */
+    box-shadow: 0 0 10px rgba(0, 210, 255, 0.7); /* Glow effect structural implicitly structural effect */
+}
+
+/* Time text explicitly structurally implement explicitly time explicit text explicit structure explicit text: */
+.time-text {
+    font-size: 0.8rem;
+    color: #777;
+    min-width: 40px; /* Important for keeping layout stability strictly implicitly strictly ensure implicit strictly strictly stability structural integrity stability explicitly ensure structural stability explicitly integrity implicitly strictly integrity implicitly structurally ensure structural stability explicit structural integrity explicit strictly stability structural integrity implicitly strictly stability explicit structure ensure implicitly explicitly structure explicit structure */
+}
+
+.button-group {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 30px;
+    margin: 25px 0;
+}
+
+.icon-btn { background: none; border: none; color: #fff; cursor: pointer; }
+.play-pause-btn {
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: 0.3s ease;
+    padding: 10px;
+}
+.play-pause-btn:hover {
+    transform: scale(1.2);
+    filter: drop-shadow(0 0 8px #00d2ff); /* ✨ Icon glow effect */
+}
+.status-text { color: #555; font-size: 0.8rem; margin-top: 10px; }
+.status-blue { color: #00d2ff; text-shadow: 0 0 5px #00d2ff; }
+
+/* Mobile Optimizations */
+@media (max-width: 600px) {
+    .player-poster { width: 180px; height: 180px; }
+    .blue-glow { font-size: 1.2rem; }
 }

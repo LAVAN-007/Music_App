@@ -1,43 +1,52 @@
 import React from 'react';
-import { decodeHTMLEntities } from '../SyncEngine';
+import { decodeHTMLEntities } from '../SyncEngine'; // 👈 Neenga sonna andha crucial import
+import { Search, X } from 'lucide-react'; // Icons for search bar
 
 const Sidebar = ({ searchTerm, setSearchTerm, filteredSongs, currentSong, sendSyncAction }) => {
     return (
-        <div className="sidebar">
-            <h2>🎵 Tamil Sync</h2>
+        <div className="sidebar-content">
+            <h2 className="sidebar-title">🎵 Tamil Sync</h2>
 
-            <div className="search-container">
+            {/* Modern Search Container */}
+            <div className="search-wrapper">
+                <Search size={18} className="search-icon" />
                 <input
-                    className="search-bar"
+                    className="sidebar-search-bar"
                     placeholder="Search songs..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
-                {/* The Clear Button (X) */}
                 {searchTerm && (
                     <button
-                        className="clear-search"
+                        className="clear-btn"
                         onClick={() => setSearchTerm("")}
                     >
-                        ✕
+                        <X size={16} />
                     </button>
                 )}
             </div>
 
-            <div className="song-list">
+            {/* Song List with Scroll */}
+            <div className="song-scroll-container">
                 {filteredSongs.length > 0 ? (
                     filteredSongs.map((song) => (
                         <div
                             key={song.id}
-                            className={`song-item ${currentSong?.id === song.id ? 'active' : ''}`}
+                            className={`sidebar-song-item ${currentSong?.id === song.id ? 'active-blue' : ''}`}
                             onClick={() => sendSyncAction("PLAY", song.id, 0)}
                         >
-                            <strong>{decodeHTMLEntities(song.title)}</strong>
-                            <p>{song.artist}</p>
+                            <div className="song-details">
+                                {/* Using the decode function here */}
+                                <strong className="song-name">
+                                    {decodeHTMLEntities(song.title)}
+                                </strong>
+                                <p className="artist-name">{song.artist}</p>
+                            </div>
+                            {currentSong?.id === song.id && <div className="playing-indicator">Now Playing</div>}
                         </div>
                     ))
                 ) : (
-                    <p className="no-results">No songs found...</p>
+                    <div className="no-songs-found">No songs found...</div>
                 )}
             </div>
         </div>
