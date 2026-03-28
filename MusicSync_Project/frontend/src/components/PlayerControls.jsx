@@ -24,7 +24,7 @@ const PlayerControls = ({ audioRef, currentSong, playNext, playPrev, sendSyncAct
         audio.addEventListener('play', updateStatus);
         audio.addEventListener('pause', updateStatus);
         audio.addEventListener('timeupdate', updateStatus);
-        updateStatus();// 🔥 Continuous sync check
+        updateStatus();
 
         return () => {
             audio.removeEventListener('play', updateStatus);
@@ -56,9 +56,26 @@ const PlayerControls = ({ audioRef, currentSong, playNext, playPrev, sendSyncAct
             <div className="progress-container">
                 <span className="time-text">{formatTime(currentTime)}</span>
                 <div className="progress-bar-base">
+                    <input
+                        type="range"
+                        min="0"
+                        max={duration || 100}
+                        value={currentTime}
+                        className="seek-slider"
+                        onChange={(e) => {
+                            const newTime = parseFloat(e.target.value);
+                            setCurrentTime(newTime);
+                        }}
+                        onMouseUp={(e) => {
+                            sendSyncAction(isPlaying ? "PLAY" : "PAUSE", currentSong.id, parseFloat(e.target.value));
+                        }}
+                        onTouchEnd={(e) => {
+                            sendSyncAction(isPlaying ? "PLAY" : "PAUSE", currentSong.id, parseFloat(e.target.value));
+                        }}
+                    />
                     <div
                         className="progress-bar-fill"
-                        style={{ width: `${progressPercent}%` }} // Dynamic width strictly update
+                        style={{ width: `${progressPercent}%` }}
                     ></div>
                 </div>
                 <span className="time-text">{formatTime(duration)}</span>
@@ -73,7 +90,7 @@ const PlayerControls = ({ audioRef, currentSong, playNext, playPrev, sendSyncAct
                 <button className="play-pause-btn" onClick={() => {
                     const nextAction = isPlaying ? "PAUSE" : "PLAY";
                     console.log("Sending Sync:", nextAction);
-                    setIsPlaying(!isPlaying);// Debugging
+                    setIsPlaying(!isPlaying);
                     sendSyncAction(nextAction);
                 }}>
                     {/* UI Toggle based purely on isPlaying internal state */}

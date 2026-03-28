@@ -17,7 +17,6 @@ function App() {
   const audioRef = useRef(null);
   const lastSentTime = useRef(0);
 
-  //const LAPTOP_IP = "192.168.43.148";
 
   // --- 1. SEND ACTION ---
   const sendSyncAction = useCallback((action, songId = null, timestamp = null) => {
@@ -42,7 +41,6 @@ function App() {
     if (!audioRef.current) return;
 
     const listToUse = freshSongsList || allSongs;
-    // 🔥 Type safety: String comparison
     const incoming = listToUse.find(s => String(s.id) === String(data.songId));
 
     if (incoming) {
@@ -60,7 +58,6 @@ function App() {
           audioRef.current.oncanplay = null;
         };
       } else {
-        // Same song, just sync time
         const isCurrentlyPlaying = !audioRef.current.paused;
         if (Math.abs(audioRef.current.currentTime - data.timestamp) > 1.5) {
           audioRef.current.currentTime = data.timestamp;
@@ -86,8 +83,7 @@ function App() {
             const uniqueSongs = Array.from(new Map(data.map(s => [s.id, s])).values());
             const finalSongs = uniqueSongs.map(song => ({
                 ...song,
-                // Backend-la 'thumbnail' nu irundha adha 'poster' ku assign pannunga
-                poster: song.poster || song.thumbnail || "https://via.placeholder.com/150"
+                poster: song.poster || song['thumbnail'] || "https://via.placeholder.com/150"
             }));
             setAllSongs(finalSongs); // Save to state
             setCurrentSong(finalSongs[0]);
@@ -121,14 +117,6 @@ function App() {
     sendSyncAction("PLAY", prev.id, 0);
   };
 
-  // --- 5. SEARCH LOGIC (FIXED) ---
-  const filteredSongs = allSongs.filter(s => {
-    const title = (s.title || "").toLowerCase();
-    const artist = (s.artist || "").toLowerCase();
-    const target = searchTerm.toLowerCase();
-    return title.includes(target) || artist.includes(target);
-  });
-
   if (!isLoggedIn) {
     return (
         <div className="login-screen">
@@ -136,7 +124,7 @@ function App() {
             <h1>Music Sync</h1>
             <input type="text" placeholder="Name..." className="login-input"
                    onChange={(e) => setUsername(e.target.value)}
-                   onKeyPress={(e) => e.key === 'Enter' && username && setIsLoggedIn(true)}/>
+                   onKeyDown={(e) => e.key === 'Enter' && username && setIsLoggedIn(true)}/>
             <button className="login-button" onClick={() => username && setIsLoggedIn(true)}>Join</button>
           </div>
         </div>
@@ -146,21 +134,22 @@ function App() {
   return (
       <div className="music-app">
         {/* Hamburger Icon */}
-        <audio ref={audioRef} />
+        <audio ref={audioRef}
+               onEnded={playNext}/>
         <button className="menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
           {isSidebarOpen ? <X size={30} /> : <Menu size={30} />}
         </button>
         <div className={`sidebar-overlay ${isSidebarOpen ? 'open' : ''}`}>
-        <Sidebar
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            filteredSongs={filteredSongs}
-            currentSong={currentSong}
-            sendSyncAction={(action, id) => {
-              sendSyncAction(action, id, 0);
-              setIsSidebarOpen(false); // Mobile-kaaga auto-close
-            }}
-        />
+            <Sidebar
+                searchTerm={searchTerm}
+                setSearchTerm={setSearchTerm}
+                songs={allSongs}
+                currentSong={currentSong}
+                sendSyncAction={(action, id) => {
+                    sendSyncAction(action, id, 0);
+                    setIsSidebarOpen(false);
+                }}
+            />
         </div>
         <div className="main-content">
           {currentSong ? (

@@ -1,7 +1,7 @@
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 
-export const setupWebSocket = (username, onConnect, onMessage) => { // 👈 Make sure 3 args are here
+export const setupWebSocket = (username, onConnect, onMessage) => {
     const socket = new SockJS('/ws-music');
 
     const client = new Client({

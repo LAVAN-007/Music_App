@@ -5,10 +5,9 @@ export default defineConfig({
   plugins: [react()],
   define: { global: 'window' },
   server: {
-    allowedHosts: true, // Blocked error fix panna
+    allowedHosts: true,
     host: true,
     hmr: {
-      // Vite-oda internal websocket error-ah fix panna
       protocol: 'wss',
       clientPort: 443
     },
@@ -24,7 +23,6 @@ export default defineConfig({
         ws: true,
         changeOrigin: true,
         secure: false,
-        // 🔥 Add this to bypass the Ngrok warning for the WebSocket handshake
         headers: {
           "ngrok-skip-browser-warning": "true"
         }

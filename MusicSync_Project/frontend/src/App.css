@@ -9,6 +9,7 @@ body {
     font-family: 'Poppins', sans-serif;
     overflow: hidden;
     height: 100vh;
+    height: -webkit-fill-available; /* iPhone Safari Fix */
 }
 
 /* --- Login Screen --- */
@@ -46,9 +47,8 @@ body {
     color: white;
     margin-bottom: 20px;
     outline: none;
+    font-size: 16px !important; /* iPhone Auto-zoom fix */
 }
-
-.login-input:focus { border-color: #00d2ff; }
 
 .login-button {
     width: 100%;
@@ -59,17 +59,17 @@ body {
     color: #000;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 0 15px rgba(0, 210, 255, 0.4);
 }
 
 /* --- Music App Layout --- */
 .music-app {
     display: flex;
+    flex-direction: column; /* Keep vertical stacking for mobile */
     height: 100vh;
     width: 100vw;
-    justify-content: center;
-    align-items: center;
+    background: #000;
     position: relative;
+    overflow: hidden;
 }
 
 .menu-btn {
@@ -88,7 +88,7 @@ body {
     position: fixed;
     left: -100%;
     top: 0;
-    width: 280px;
+    width: 300px;
     height: 100vh;
     background: #0a0a0a;
     border-right: 1px solid #00d2ff;
@@ -100,7 +100,6 @@ body {
 
 .sidebar-overlay.open { left: 0; }
 
-/* Sidebar Header */
 .sidebar-title {
     color: #00d2ff;
     font-size: 1.4rem;
@@ -108,7 +107,6 @@ body {
     text-shadow: 0 0 10px rgba(0, 210, 255, 0.5);
 }
 
-/* Search Wrapper Styling */
 .search-wrapper {
     position: relative;
     display: flex;
@@ -127,20 +125,21 @@ body {
     border: none;
     color: white;
     outline: none;
+    font-size: 16px !important;
 }
 
 .search-icon { color: #555; }
 .clear-btn { background: none; border: none; color: #00d2ff; cursor: pointer; }
 
-/* Song List Styling */
 .song-scroll-container {
     height: calc(100vh - 180px);
     overflow-y: auto;
+    padding-right: 5px;
 }
 
-/* Scrollbar styling for a cleaner look */
-.song-scroll-container::-webkit-scrollbar { width: 5px; }
-.song-scroll-container::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+.song-scroll-container::-webkit-scrollbar { width: 4px; }
+.song-scroll-container::-webkit-scrollbar-track { background: transparent; }
+.song-scroll-container::-webkit-scrollbar-thumb { background: rgba(0, 210, 255, 0.3); border-radius: 10px; }
 
 .sidebar-song-item {
     padding: 15px;
@@ -148,122 +147,138 @@ body {
     margin-bottom: 8px;
     cursor: pointer;
     transition: 0.2s;
-    border-left: 3px solid transparent;
 }
 
-.sidebar-song-item:hover { background: #111; border-left-color: #333; }
+.sidebar-song-item:hover { background: #111; }
 
-/* Active Song Highlight */
 .active-blue {
     background: rgba(0, 210, 255, 0.1) !important;
-    border-left-color: #00d2ff !important;
+    border-left: 3px solid #00d2ff !important;
 }
 
-.active-blue .song-name { color: #00d2ff; }
-
-.artist-name { font-size: 0.8rem; color: #777; margin-top: 3px; }
-.playing-indicator { font-size: 0.6rem; color: #00d2ff; text-transform: uppercase; margin-top: 5px; }
-
-/* Player UI */
+/* --- 🎯 PLAYER UI (Centered Strictly) --- */
 .main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center; /* Vertical Center */
+    align-items: center;     /* Horizontal Center */
     text-align: center;
-    width: 90%;
-    max-width: 500px;
+    width: 100%;
+    padding: 20px;
 }
 
-/* App.css kulla check for this block and replace it */
 .album-art-container {
     display: flex;
     justify-content: center;
     align-items: center;
     margin-bottom: 25px;
-    width: 100%; /* Important for centering */
+    width: 100%;
 }
 
-/* 🖼️ THE REFIX: Size explicitly specified for the img tag directly */
 .player-poster {
-    width: 190px; /* Force the size explicitly */
-    height: 190px; /* Force the size explicitly */
-    max-width: 190px;
-    max-height: 190px;
-    border-radius: 12px;
-    object-fit: cover; /* Important to avoid stretching */
+    width: 250px;
+    height: 250px;
+    max-width: 65vw;
+    max-height: 65vw;
+    border-radius: 15px;
+    object-fit: cover;
     box-shadow: 0 0 25px rgba(0, 210, 255, 0.4);
-    display: block; /* Ensure it's not hidden */
-    margin: 0 auto; /* Center within the container */
+    display: block;
+    margin: 0 auto;
 }
 
 .blue-glow {
     color: #fff;
     text-shadow: 0 0 10px #00d2ff;
     margin-bottom: 10px;
+    font-size: 1.3rem;
+    font-weight: 600;
 }
 
-/* App.css kulla add this ProgressBar style explicitly implement strictly ProgressBar structure implicitly implement structure: */
+/* Progress Section */
 .progress-container {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 15px; /* Space between time and line strictly progress percent */
-    margin: 20px auto; /* Centered between poster and buttons strictly percent */
+    gap: 15px;
+    margin: 20px auto;
     width: 100%;
-    max-width: 400px; /* Limit width explicitly trigger Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent Percent explicitly explicitly trigger */
+    max-width: 450px;
 }
 
-/* Base line strictly implicitly implement ProgressBar structure logic */
 .progress-bar-base {
-    flex-grow: 1; /* Stretch ProgressBar structure */
-    height: 6px;
-    background-color: #333; /* Dark track */
-    border-radius: 10px;
-    overflow: hidden; /* Important for filling structure implicitly strictly fill fill fill explicitly trigger */
     position: relative;
+    flex-grow: 1;
+    height: 6px;
+    background-color: #333;
+    border-radius: 10px;
 }
 
-/* Blue filling line strictly strictly calculate percent strictly percent explicitly fill explicitly strictly calculate percent fill Percent strictly fill explicitly trigger fill explicit strictly Percent implicitly explicitly triggering */
 .progress-bar-fill {
     height: 100%;
-    background: linear-gradient(90deg, #3a7bd5 0%, #00d2ff 100%); /* Blue gradient structurally structure explicit strictly fill Percent explicit strictly fill explicit */
+    background: linear-gradient(90deg, #3a7bd5 0%, #00d2ff 100%);
     border-radius: 10px;
-    transition: width 0.1s linear; /* Smooth movement implicit strictly implicitly smoothly movement smoothly movement smoothly smooth smooth movement explicitly triggering smoothly smooth smooth movement explicit strictly Percent implicit explicitly structure smoothly explicit triggering Percent smoothly structure explicit structural triggering */
-    box-shadow: 0 0 10px rgba(0, 210, 255, 0.7); /* Glow effect structural implicitly structural effect */
+    box-shadow: 0 0 10px rgba(0, 210, 255, 0.7);
 }
 
-/* Time text explicitly structurally implement explicitly time explicit text explicit structure explicit text: */
-.time-text {
-    font-size: 0.8rem;
-    color: #777;
-    min-width: 40px; /* Important for keeping layout stability strictly implicitly strictly ensure implicit strictly strictly stability structural integrity stability explicitly ensure structural stability explicitly integrity implicitly strictly integrity implicitly structurally ensure structural stability explicit structural integrity explicit strictly stability structural integrity implicitly strictly stability explicit structure ensure implicitly explicitly structure explicit structure */
+.seek-slider {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    opacity: 0; cursor: pointer; z-index: 10;
+    touch-action: none;
 }
 
+.time-text { font-size: 0.8rem; color: #777; min-width: 45px; }
+
+/* 🎨 REDESIGNED NEON BUTTONS */
 .button-group {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 30px;
-    margin: 25px 0;
+    gap: 40px;
+    margin: 20px 0;
 }
 
-.icon-btn { background: none; border: none; color: #fff; cursor: pointer; }
+.icon-btn {
+    background: none; border: none; color: #fff; cursor: pointer;
+    transition: 0.3s;
+}
+
+.icon-btn:hover { color: #00d2ff; transform: scale(1.1); }
+
 .play-pause-btn {
-    background: none;
-    border: none;
+    background: rgba(0, 210, 255, 0.05);
+    border: 1px solid rgba(0, 210, 255, 0.3);
+    width: 70px;
+    height: 70px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    transition: 0.3s ease;
-    padding: 10px;
+    transition: 0.3s;
+    box-shadow: 0 0 15px rgba(0, 210, 255, 0.1);
 }
-.play-pause-btn:hover {
-    transform: scale(1.2);
-    filter: drop-shadow(0 0 8px #00d2ff); /* ✨ Icon glow effect */
-}
-.status-text { color: #555; font-size: 0.8rem; margin-top: 10px; }
-.status-blue { color: #00d2ff; text-shadow: 0 0 5px #00d2ff; }
 
-/* Mobile Optimizations */
-@media (max-width: 600px) {
-    .player-poster { width: 180px; height: 180px; }
-    .blue-glow { font-size: 1.2rem; }
+.play-pause-btn:hover {
+    background: rgba(0, 210, 255, 0.15);
+    border-color: #00d2ff;
+    box-shadow: 0 0 25px rgba(0, 210, 255, 0.4);
+    transform: scale(1.05);
+}
+
+.status-text { color: #555; font-size: 0.8rem; margin-top: 15px; }
+.status-blue { color: #00d2ff; text-shadow: 0 0 8px #00d2ff; font-weight: 500; }
+
+/* 📱 UNIVERSAL MOBILE OPTIMIZATION */
+@media (max-width: 768px) {
+    .player-poster { width: 220px; height: 220px; }
+    .blue-glow { font-size: 1.1rem; }
+}
+
+@media (max-width: 480px) {
+    .player-poster { width: 190px; height: 190px; margin-bottom: 20px; }
+    .button-group { gap: 25px; }
+    .progress-container { width: 95%; }
 }
