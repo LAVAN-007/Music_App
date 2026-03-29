@@ -10,6 +10,27 @@ import java.util.*;
 public class SongController {
 
     private static List<Song> cachedPlaylist = new ArrayList<>();
+    private static final List<String> ALLOWED_USERS = Arrays.asList(
+            "lavanya", "vijay", "nivedha", "saran", "srikanth", "karthi"
+    );
+
+    @GetMapping("/validate-access")
+    public Map<String, Object> validateAccess(@RequestParam("key") String key) {
+        Map<String, Object> response = new HashMap<>();
+
+        String inputKey = (key != null) ? key.trim().toLowerCase() : "";
+
+        if (ALLOWED_USERS.contains(inputKey)) {
+            response.put("status", "SUCCESS");
+
+            String capitalized = inputKey.substring(0, 1).toUpperCase() + inputKey.substring(1);
+            response.put("username", capitalized);
+        } else {
+            response.put("status", "DENIED");
+            response.put("message", "Invalid Security Key!");
+        }
+        return response;
+    }
 
     @SuppressWarnings("unchecked")
     @GetMapping("/songs")

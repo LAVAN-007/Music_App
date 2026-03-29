@@ -10,7 +10,7 @@ import lombok.NoArgsConstructor;
 public class SyncMessage {
     private String action;
     private double timestamp;
-    private int songId;
+    private String songId;
     private String username;
     private Double duration;
 }

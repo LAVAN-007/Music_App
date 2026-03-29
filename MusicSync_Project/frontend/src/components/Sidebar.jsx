@@ -1,10 +1,19 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { decodeHTMLEntities } from '../SyncEngine';
-import { Search, X } from 'lucide-react';
+import { Search, X, LogOut, Users } from 'lucide-react'; // 🔥 LogOut & Users icons add panniyachu
 
-const Sidebar = ({ searchTerm, setSearchTerm, songs = [], currentSong, sendSyncAction }) => {
+const Sidebar = ({ searchTerm, setSearchTerm, songs = [], currentSong, sendSyncAction, activeUsers = [], onLogout }) => {
     const [debouncedTerm, setDebouncedTerm] = useState("");
     const [visibleCount, setVisibleCount] = useState(40);
+
+    // 🎨 Profile Colors Logic
+    const getUserColor = (name) => {
+        const colors = {
+            lavanya: '#2ecd2e', vijay: '#2ecd2e', nivedha: '#2ecd2e',
+            saran: '#2ecd2e', srikanth: '#2ecd2e', karthi: '#2ecd2e'
+        };
+        return colors[name.toLowerCase()] || '#00d2ff';
+    };
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -33,7 +42,24 @@ const Sidebar = ({ searchTerm, setSearchTerm, songs = [], currentSong, sendSyncA
 
     return (
         <div className="sidebar-content">
-            <h2 className="sidebar-title">🎵 Tamil Sync</h2>
+            <h2 className="sidebar-title">Music Sync</h2>
+
+            {/* 🟢 NEW: ACTIVE USERS SECTION */}
+            <div className="sidebar-main-scroll">
+            <div className="active-users-wrapper">
+                <div className="section-header">
+                    <Users size={16} /> <span>Online Friends ({activeUsers.length})</span>
+                </div>
+                <div className="active-user-list">
+                    {activeUsers.length > 0 ? activeUsers.map(user => (
+                        <div key={user} className="user-pill" style={{ borderColor: getUserColor(user) }}>
+                            <span className="user-dot" style={{ backgroundColor: getUserColor(user) }}></span>
+                            {user}
+                        </div>
+                    )) : <div className="no-users">Only you are here</div>}
+                </div>
+            </div>
+
             <div className="search-wrapper">
                 <Search size={18} className="search-icon" />
                 <input
@@ -65,6 +91,13 @@ const Sidebar = ({ searchTerm, setSearchTerm, songs = [], currentSong, sendSyncA
                 ) : (
                     <div className="no-songs-found">No songs found...</div>
                 )}
+            </div>
+            </div>
+
+            <div className="sidebar-footer">
+                <button className="logout-button" onClick={onLogout}>
+                    <LogOut size={18} /> Exit Session
+                </button>
             </div>
         </div>
     );
