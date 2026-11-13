@@ -65,7 +65,8 @@ export default function Library({ library, currentId, playing, onPlay, onQueue }
               <button className="song-main" onClick={() => onPlay(song)} title={`Play ${song.title}`}>
                 <span className="song-art">
                   <Artwork src={thumb(song.thumbnail)} />
-                  {active && <span className={`eq ${playing ? 'on' : ''}`}><i /><i /><i /></span>}
+                  {active ? <span className={`eq ${playing ? 'on' : ''}`}><i /><i /><i /></span>
+                    : <span className="song-play"><Icon name="play" size={22} /></span>}
                 </span>
                 <span className="song-text">
                   <span className="song-title">{song.title}</span>

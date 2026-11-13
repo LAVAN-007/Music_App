@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { api } from '../lib/api';
-import { Brand, Icon, Spinner } from './ui';
+import { Bars, Brand, Icon, Spinner } from './ui';
 
 export default function AuthScreen({ inviteCode, onSignedIn }) {
   const [mode, setMode] = useState('login');
@@ -32,12 +32,23 @@ export default function AuthScreen({ inviteCode, onSignedIn }) {
   };
 
   return (
-    <div className="center-screen">
+    <div className="auth">
       <div className="glow glow-a" /><div className="glow glow-b" />
-      <main className="card auth-card">
+      <section className="auth-hero">
         <Brand />
-        <h1 className="auth-title">Listen together, perfectly in sync.</h1>
-        <p className="muted">Start a room, share the code, and everyone hears the same beat.</p>
+        <h1 className="auth-title">Listen together, <span className="hl">perfectly in sync.</span></h1>
+        <p className="auth-lead">Start a room, share the code, and everyone hears the same beat at the same second.</p>
+        <ul className="auth-points">
+          <li><Icon name="check" size={16} />One code gets your friends in within seconds</li>
+          <li><Icon name="check" size={16} />Anyone can play, pause, skip and queue songs</li>
+          <li><Icon name="check" size={16} />Chat while the music plays</li>
+        </ul>
+        <Bars />
+      </section>
+
+      <main className="card auth-card">
+        <h2>{isRegister ? 'Create your account' : 'Welcome back'}</h2>
+        <p className="muted">{isRegister ? 'It takes a few seconds. No email needed.' : 'Sign in to start or join a room.'}</p>
 
         {inviteCode && (
           <div className="invite-banner">

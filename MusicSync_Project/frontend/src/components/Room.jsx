@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRoom } from '../hooks/useRoom';
 import { usePlayer } from '../hooks/usePlayer';
 import { useLatest } from '../hooks/useLatest';
-import { formatTime } from '../lib/util';
+import { formatTime, thumb } from '../lib/util';
 import { Avatar, Brand, Icon } from './ui';
 import Library from './Library';
 import NowPlaying from './NowPlaying';
@@ -66,7 +66,7 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
   });
   const { state, send } = room;
   const song = state ? library.byId.get(state.songId) : null;
-  const player = usePlayer(audioRef, state, song, send);
+  const player = usePlayer(audioRef, state, song, send, room.listeners <= 1);
 
   // Warm up the song that plays next (queue head, else the next one in the library) so it starts on time.
   const nextId = state?.queue[0] ?? (song ? (library.byId.has(song.id + 1) ? song.id + 1 : library.songs[0]?.id) : null);
@@ -99,18 +99,25 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
     return ok;
   }, [send, toast]);
 
-  const playingRef = useLatest(!!state?.playing);
+  // The listener who clicks hears the result at once; the server's answer follows and takes over.
+  const playerRef = useLatest(player);
   const toggle = useCallback(() => {
-    // Any tap also counts as the user gesture browsers need before audio may start.
-    if (!playingRef.current) audioRef.current?.play().catch(() => {});
-    act({ type: playingRef.current ? 'PAUSE' : 'PLAY' });
-  }, [act, playingRef]);
+    const p = playerRef.current;
+    if (p.playing) {
+      const audio = audioRef.current;
+      const position = audio && audio.readyState >= 1 && !audio.muted ? audio.currentTime : undefined;
+      if (act({ type: 'PAUSE', position })) p.pause();
+    } else if (act({ type: 'PLAY' })) {
+      p.play();
+    }
+  }, [act, playerRef]);
   const next = useCallback(() => act({ type: 'NEXT' }), [act]);
   const prev = useCallback(() => act({ type: 'PREV' }), [act]);
 
   const playSong = (s) => {
-    audioRef.current?.play().catch(() => {});
-    if (act({ type: 'SELECT', songId: s.id }) && isMobile) setView('player');
+    if (!act({ type: 'SELECT', songId: s.id })) return;
+    player.prepare(s);
+    if (isMobile) setView('player');
   };
   const queueSong = (s) => { if (act({ type: 'QUEUE_ADD', songId: s.id })) toast(`Added "${s.title}" to the queue`); };
 
@@ -152,11 +159,15 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
 
   return (
     <div className="room" data-view={view}>
+      <div className="ambient" aria-hidden="true">
+        {song?.thumbnail && <img key={song.thumbnail} src={thumb(song.thumbnail)} alt="" />}
+      </div>
       <header className="topbar">
         <Brand compact />
         <button className="room-pill" onClick={() => setInviteOpen(true)} title="Invite friends">
           <span className="room-pill-label">Room</span>
           <span className="room-pill-code">{code}</span>
+          <Icon name="copy" size={14} />
         </button>
         <div className="topbar-right">
           <button className="avatars" onClick={() => setInviteOpen(true)} aria-label={`${room.users.length} in this room`}>
@@ -179,7 +190,7 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
       )}
 
       <aside className="panel panel-library">
-        <Library library={library} currentId={state?.songId} playing={!!state?.playing}
+        <Library library={library} currentId={state?.songId} playing={player.playing}
           onPlay={playSong} onQueue={queueSong} />
       </aside>
 
@@ -187,7 +198,7 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
         <NowPlaying song={song} state={state} player={player} libraryLoading={library.songs.length === 0}
           others={others} activity={activity} volume={volume} onVolume={setVolume}
           onToggle={toggle} onNext={next} onPrev={prev}
-          onSeek={(position) => act({ type: 'SEEK', position })}
+          onSeek={(position) => { if (act({ type: 'SEEK', position })) player.seek(position); }}
           onInvite={() => setInviteOpen(true)} />
       </main>
 

@@ -40,7 +40,8 @@ export default function Lobby({ user, onCreate, onJoin, onSignOut }) {
       </header>
 
       <main className="lobby-main">
-        <h1>Hi {user}, ready to listen?</h1>
+        <span className="eyebrow"><i className="dot" />Signed in and ready</span>
+        <h1>Hi {user}, ready to <span className="hl">listen</span>?</h1>
         <p className="muted lobby-sub">Rooms keep everyone on the same song, at the same second.</p>
 
         <div className="lobby-cards">
@@ -53,7 +54,7 @@ export default function Lobby({ user, onCreate, onJoin, onSignOut }) {
             </button>
           </section>
 
-          <section className="card lobby-card">
+          <section className="card lobby-card alt">
             <span className="card-icon alt"><Icon name="userAdd" size={22} /></span>
             <h2>Join a room</h2>
             <p className="muted">Enter the 6-character code a friend shared, or paste their invite link.</p>
@@ -68,6 +69,12 @@ export default function Lobby({ user, onCreate, onJoin, onSignOut }) {
           </section>
         </div>
         {error && <p className="error lobby-error" role="alert">{error}</p>}
+
+        <ol className="steps">
+          <li><b>1</b><div><strong>Start a room</strong><span>You get a 6-character code and an invite link.</span></div></li>
+          <li><b>2</b><div><strong>Share it</strong><span>Friends sign in and land straight in your room.</span></div></li>
+          <li><b>3</b><div><strong>Press play</strong><span>Everyone hears the same second of the same song.</span></div></li>
+        </ol>
       </main>
     </div>
   );

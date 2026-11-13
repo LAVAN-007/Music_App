@@ -14,12 +14,16 @@ export function useRoom(code, handlers) {
   const [status, setStatus] = useState('connecting'); // connecting | connected | reconnecting
   const [state, setState] = useState(null);
   const [users, setUsers] = useState([]);
+  const [listeners, setListeners] = useState(2); // connected devices; assume company until told otherwise
   const [messages, setMessages] = useState([]);
   const clientRef = useRef(null);
+  const joinedRef = useRef(false); // the server ignores commands sent before JOIN
+  const queuedRef = useRef([]); // commands issued while the join is still in flight
   const handlersRef = useLatest(handlers);
 
   useEffect(() => {
     let closed = false;
+    let refine = 0;
     const topic = `/topic/room/${code}`;
 
     const onEvent = (event) => {
@@ -28,6 +32,7 @@ export function useRoom(code, handlers) {
         if (event.action !== 'JOIN') handlersRef.current.onActivity?.(event);
       } else if (event.type === 'PRESENCE') {
         setUsers(event.users);
+        if (typeof event.listeners === 'number') setListeners(event.listeners);
       } else if (event.type === 'CHAT') {
         setMessages(prev => (prev.some(m => m.id === event.message.id) ? prev : [...prev, event.message]));
         handlersRef.current.onChat?.(event.message);
@@ -55,6 +60,7 @@ export function useRoom(code, handlers) {
         }
       },
       onConnect: async () => {
+        const clock = syncClock(3); // runs alongside the room lookup so joining stays quick
         try {
           // Confirms the room still exists (the server may have restarted) and loads chat history.
           const info = await api(`/rooms/${code}`);
@@ -68,13 +74,21 @@ export function useRoom(code, handlers) {
           else client.forceDisconnect(); // network blip: let the client retry
           return;
         }
-        await syncClock();
+        await clock;
         if (closed || !client.connected) return;
         client.subscribe(topic, frame => onEvent(JSON.parse(frame.body)));
         client.publish({ destination: `/app/room/${code}`, body: JSON.stringify({ type: 'JOIN' }) });
+        joinedRef.current = true;
+        for (const command of queuedRef.current.splice(0)) {
+          client.publish({ destination: `/app/room/${code}`, body: JSON.stringify(command) });
+        }
         setStatus('connected');
+        // Refine the clock estimate once things are quiet.
+        refine = setTimeout(() => { if (!closed) syncClock(5); }, 5000);
       },
       onWebSocketClose: () => {
+        joinedRef.current = false;
+        queuedRef.current = [];
         if (!closed) setStatus(s => (s === 'connected' ? 'reconnecting' : s));
       },
     });
@@ -83,6 +97,9 @@ export function useRoom(code, handlers) {
 
     return () => {
       closed = true;
+      joinedRef.current = false;
+      queuedRef.current = [];
+      clearTimeout(refine);
       clientRef.current = null;
       client.deactivate();
     };
@@ -92,9 +109,14 @@ export function useRoom(code, handlers) {
   const send = useCallback((command) => {
     const client = clientRef.current;
     if (!client?.connected) return false;
+    if (!joinedRef.current) {
+      // Connected but still joining: keep the command and send it the moment the join completes.
+      if (queuedRef.current.length < 10) queuedRef.current.push(command);
+      return true;
+    }
     client.publish({ destination: `/app/room/${code}`, body: JSON.stringify(command) });
     return true;
   }, [code]);
 
-  return { status, state, users, messages, send };
+  return { status, state, users, listeners, messages, send };
 }

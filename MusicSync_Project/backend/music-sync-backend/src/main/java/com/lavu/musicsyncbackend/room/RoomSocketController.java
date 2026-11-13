@@ -40,7 +40,7 @@ public class RoomSocketController {
             if (previous != null && !previous.equals(room.getCode())) leave(sessionId, previous);
             rooms.cancelRemoval(room);
             boolean isNew = room.join(sessionId, username);
-            broker.convertAndSend(topic, RoomEvent.presence(room.users()));
+            broker.convertAndSend(topic, RoomEvent.presence(room.users(), room.listeners()));
             broker.convertAndSend(topic, RoomEvent.state(room.state(), "JOIN", username));
             if (isNew) {
                 broker.convertAndSend(topic, RoomEvent.chat(room.addMessage(username, username + " joined", true)));
@@ -72,12 +72,11 @@ public class RoomSocketController {
     private void leave(String sessionId, String code) {
         Room room = rooms.get(code);
         if (room == null) return;
+        boolean wasHere = room.hasSession(sessionId);
         String left = room.leave(sessionId);
-        if (left != null) {
-            String topic = topic(room);
-            broker.convertAndSend(topic, RoomEvent.presence(room.users()));
-            broker.convertAndSend(topic, RoomEvent.chat(room.addMessage(left, left + " left", true)));
-        }
+        String topic = topic(room);
+        if (wasHere) broker.convertAndSend(topic, RoomEvent.presence(room.users(), room.listeners()));
+        if (left != null) broker.convertAndSend(topic, RoomEvent.chat(room.addMessage(left, left + " left", true)));
         rooms.scheduleRemovalIfEmpty(room);
     }
 

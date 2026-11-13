@@ -36,9 +36,18 @@ export function Icon({ name, size = 20 }) {
 export function Brand({ compact = false }) {
   return (
     <span className="brand">
-      <span className="brand-mark"><Icon name="music" size={compact ? 16 : 18} /></span>
+      <span className="brand-mark" data-compact={compact || undefined} aria-hidden="true"><i /><i /><i /><i /></span>
       <span className="brand-name">MusicSync</span>
     </span>
+  );
+}
+
+/** Decorative animated equaliser. */
+export function Bars({ count = 28 }) {
+  return (
+    <div className="bars" aria-hidden="true">
+      {Array.from({ length: count }, (_, i) => <i key={i} style={{ '--i': (i * 7) % 11 }} />)}
+    </div>
   );
 }
 

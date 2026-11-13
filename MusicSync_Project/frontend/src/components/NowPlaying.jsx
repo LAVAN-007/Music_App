@@ -24,11 +24,9 @@ export default function NowPlaying({ song, state, player, libraryLoading, others
     );
   }
 
-  const playing = !!state?.playing;
+  const playing = player.playing;
   return (
     <div className="now">
-      {song.thumbnail && <img className="now-backdrop" src={song.thumbnail} alt="" aria-hidden="true" />}
-
       <div className="now-people">
         {others.length > 0 ? (
           <span className="pill live"><i className="dot" />Listening with {others.slice(0, 2).join(', ')}
@@ -41,6 +39,7 @@ export default function NowPlaying({ song, state, player, libraryLoading, others
       </div>
 
       <div className="now-art-wrap">
+        {song.thumbnail && <img className="now-glow" src={song.thumbnail} alt="" aria-hidden="true" />}
         <Artwork src={song.thumbnail} className={`now-art ${playing ? 'playing' : ''}`} />
         {player.blocked && playing && (
           <button className="tap-overlay" onClick={player.unblock}>

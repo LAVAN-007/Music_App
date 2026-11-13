@@ -56,6 +56,11 @@ public class Room {
         return List.copyOf(new LinkedHashSet<>(sessions.values()));
     }
 
+    /** Number of connected devices. */
+    public synchronized int listeners() {
+        return sessions.size();
+    }
+
     public synchronized List<ChatMessage> messages() {
         return List.copyOf(messages);
     }
