@@ -67,6 +67,17 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
   const { state, send } = room;
   const song = state ? library.byId.get(state.songId) : null;
   const player = usePlayer(audioRef, state, song, send);
+
+  // Warm up the song that plays next (queue head, else the next one in the library) so it starts on time.
+  const nextId = state?.queue[0] ?? (song ? (library.byId.has(song.id + 1) ? song.id + 1 : library.songs[0]?.id) : null);
+  const nextUrl = nextId != null && nextId !== song?.id ? library.byId.get(nextId)?.url : null;
+  useEffect(() => {
+    if (!nextUrl) return undefined;
+    const warm = new Audio();
+    warm.preload = 'metadata';
+    warm.src = nextUrl;
+    return () => { warm.removeAttribute('src'); warm.load(); };
+  }, [nextUrl]);
   const online = room.status === 'connected';
 
   useEffect(() => {

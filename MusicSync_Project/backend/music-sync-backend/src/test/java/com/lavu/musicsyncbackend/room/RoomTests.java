@@ -99,6 +99,28 @@ class RoomTests {
     }
 
     @Test
+    void newSongStartsAfterALeadSoListenersBeginTogether() {
+        long before = System.currentTimeMillis();
+        room.apply(cmd("SELECT", 4, null, null, null));
+        RoomState started = room.state();
+        assertEquals(0, started.position());
+        assertTrue(started.updatedAt() >= before + Room.START_LEAD_MILLIS, "start is scheduled ahead");
+
+        room.apply(cmd("PAUSE", null, null, null, null));
+        assertEquals(0, room.state().position(), "pausing during the lead stays at 0:00");
+        assertTrue(room.state().updatedAt() < before + Room.SEEK_LEAD_MILLIS, "a pause takes effect at once");
+
+        room.apply(cmd("SEEK", null, 40.0, null, null));
+        assertTrue(room.state().updatedAt() < before + Room.SEEK_LEAD_MILLIS, "so does a seek while paused");
+        room.apply(cmd("PLAY", null, null, null, null));
+        long seekAt = System.currentTimeMillis();
+        room.apply(cmd("SEEK", null, 90.0, null, null));
+        assertTrue(room.state().updatedAt() >= seekAt + Room.SEEK_LEAD_MILLIS, "a seek while playing resumes ahead");
+        room.apply(cmd("PAUSE", null, null, null, null));
+        assertEquals(90.0, room.state().position(), "the position holds during the lead");
+    }
+
+    @Test
     void queueEditing() {
         room.apply(cmd("QUEUE_ADD", 2, null, null, null));
         room.apply(cmd("QUEUE_ADD", 3, null, null, null));

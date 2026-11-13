@@ -16,6 +16,10 @@ public class Room {
     static final int MAX_QUEUE = 200;
     static final int MAX_MESSAGES = 100;
     static final int MAX_CHAT_LENGTH = 500;
+    /** A new song starts this far in the future, so every listener can load it and begin together at 0:00. */
+    static final long START_LEAD_MILLIS = 1000;
+    /** A seek during playback resumes this far in the future, for the same reason. */
+    static final long SEEK_LEAD_MILLIS = 600;
 
     private final String code;
     private final String createdBy;
@@ -32,6 +36,7 @@ public class Room {
     private long version;
     private long nextMessageId = 1;
     private long emptySince = System.currentTimeMillis(); // 0 while someone is connected
+    private long lead; // how far ahead the command being applied schedules playback
 
     public Room(String code, String createdBy, SongCatalog catalog) {
         this.code = code;
@@ -118,6 +123,7 @@ public class Room {
             case "SEEK" -> {
                 if (cmd.position() == null) return false;
                 position = clamp(cmd.position());
+                if (playing) lead = SEEK_LEAD_MILLIS;
             }
             case "SELECT" -> {
                 if (catalog.byId(cmd.songId()) == null) return false;
@@ -172,15 +178,18 @@ public class Room {
         songId = id;
         position = 0;
         playing = true;
+        lead = START_LEAD_MILLIS;
     }
 
     private void touch() {
-        updatedAt = System.currentTimeMillis();
+        updatedAt = System.currentTimeMillis() + lead;
+        lead = 0;
         version++;
     }
 
+    /** During a lead, playback has not begun yet and the position holds. */
     private double livePosition() {
-        return playing ? position + (System.currentTimeMillis() - updatedAt) / 1000.0 : position;
+        return playing ? position + Math.max(0, System.currentTimeMillis() - updatedAt) / 1000.0 : position;
     }
 
     private boolean validIndex(Integer index) {

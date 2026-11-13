@@ -14,6 +14,7 @@ const MAX_SEEK_LEAD = 1.5;
  *
  * Small drift is corrected by playing slightly faster or slower, in proportion to the error
  * (at most 10%, for a few seconds); large drift by seeking.
+ * New songs and seeks are announced slightly before playback resumes, so listeners buffer and begin together.
  * A seek stalls playback while the browser buffers, so we measure how long seeks take on this
  * connection and aim that far ahead.
  */
@@ -29,6 +30,8 @@ export function usePlayer(audioRef, state, song, send) {
   const seekLead = useRef(0);
   const seekStarted = useRef(0);
   const lastHardSeek = useRef(0);
+  const startTimer = useRef(0);
+  const reconcileRef = useRef(null);
 
   const reportEnded = useCallback(() => {
     const s = stateRef.current;
@@ -44,6 +47,17 @@ export function usePlayer(audioRef, state, song, send) {
     const target = s.playing ? s.position + (serverNow() - s.updatedAt) / 1000 : s.position;
     if (s.playing && Number.isFinite(audio.duration) && target >= audio.duration - 0.15) {
       reportEnded(); // we joined (or woke up) after this track should have finished
+      return;
+    }
+
+    clearTimeout(startTimer.current);
+    const wait = s.updatedAt - serverNow();
+    if (s.playing && wait > 0) {
+      // Playback is scheduled a moment from now (new song or seek): buffer at the start point, then begin on time.
+      if (!audio.paused) audio.pause();
+      audio.playbackRate = 1;
+      if (Math.abs(audio.currentTime - s.position) > 0.05 && !audio.seeking) audio.currentTime = s.position;
+      startTimer.current = setTimeout(() => reconcileRef.current?.(true), wait);
       return;
     }
 
@@ -75,6 +89,11 @@ export function usePlayer(audioRef, state, song, send) {
       });
     }
   }, [audioRef, stateRef, reportEnded]);
+
+  useEffect(() => {
+    reconcileRef.current = reconcile;
+    return () => clearTimeout(startTimer.current);
+  }, [reconcile]);
 
   // Load the room's current song.
   useEffect(() => {

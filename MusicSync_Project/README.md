@@ -87,6 +87,8 @@ The dev server proxies to `http://localhost:8080`; set `BACKEND_URL` to point it
   `/topic/room/{code}` as *position at server time T*. Each client estimates its clock offset from
   the server and computes where playback should be right now, so network delay does not turn into
   audio delay. Small drift is corrected by nudging playback speed, large drift by seeking.
+  A new song is scheduled to start one second ahead (a seek, 0.6 s ahead), so every listener has
+  time to buffer and all of them begin together.
 - **End of track.** Every listener reports when a track ends; the server advances once, to the next
   queued song or the next song in the library.
 
