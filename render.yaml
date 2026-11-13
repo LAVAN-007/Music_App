@@ -1,0 +1,17 @@
+# Render Blueprint: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: musicsync
+    runtime: docker
+    plan: free
+    rootDir: MusicSync_Project
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/time
+    envVars:
+      # Postgres connection (e.g. a free Neon database). Entered in the Render dashboard, never committed.
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false

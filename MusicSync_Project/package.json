@@ -1,4 +1,14 @@
 {
+  "name": "musicsync",
+  "private": true,
+  "scripts": {
+    "setup": "npm --prefix frontend install",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "cd backend/music-sync-backend && ./mvnw spring-boot:run",
+    "build": "npm --prefix frontend run build && cd backend/music-sync-backend && ./mvnw -q package",
+    "start": "cd backend/music-sync-backend && java -jar target/music-sync-backend-0.0.1-SNAPSHOT.jar",
+    "test": "npm --prefix frontend run lint && cd backend/music-sync-backend && ./mvnw -q test"
+  },
   "dependencies": {
     "@stomp/stompjs": "^7.3.0",
     "sockjs-client": "^1.6.1"

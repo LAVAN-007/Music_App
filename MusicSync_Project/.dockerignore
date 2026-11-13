@@ -1,0 +1,8 @@
+**/node_modules
+**/target
+**/data
+**/dist
+backend/music-sync-backend/src/main/resources/static
+ngrok.exe
+.idea
+.git
