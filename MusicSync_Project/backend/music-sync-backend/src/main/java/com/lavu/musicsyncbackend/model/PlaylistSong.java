@@ -49,6 +49,19 @@ public class PlaylistSong {
         this.duration = song.getDuration();
     }
 
+    /** A copy of {@code other} for another playlist. */
+    public static PlaylistSong copyOf(PlaylistSong other, Long playlistId) {
+        PlaylistSong copy = new PlaylistSong();
+        copy.playlistId = playlistId;
+        copy.title = other.title;
+        copy.artist = other.artist;
+        copy.url = other.url;
+        copy.thumbnail = other.thumbnail;
+        copy.category = other.category;
+        copy.duration = other.duration;
+        return copy;
+    }
+
     private static String cut(String value, int max) {
         if (value == null) return "";
         return value.length() <= max ? value : value.substring(0, max);

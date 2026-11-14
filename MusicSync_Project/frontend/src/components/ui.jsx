@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { avatarColor, initials } from '../lib/util';
 
 const PATHS = {
   play: 'M8 5v14l11-7z',
+  chevron: 'M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z',
+  edit: 'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z',
   reply: 'M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z',
   image: 'M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z',
   shuffle: 'M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z',
@@ -85,4 +88,30 @@ export function Spinner() {
 /** Small coloured label naming a song's category. */
 export function CategoryTag({ name, color }) {
   return <span className="song-tag" style={{ '--c': color }}>{name}</span>;
+}
+
+/**
+ * A dialog centred over the whole page. It is attached to the page itself rather than to the panel
+ * that opened it, so a narrow or animated panel can never squeeze or clip it.
+ */
+export function Modal({ title, onClose, children, className = '' }) {
+  const closeRef = useRef(null);
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return createPortal(
+    <div className="overlay" onClick={onClose}>
+      <div className={`card dialog ${className}`} role="dialog" aria-modal="true" aria-label={title} onClick={e => e.stopPropagation()}>
+        <div className="dialog-head">
+          <h2>{title}</h2>
+          <button className="icon-btn" onClick={onClose} aria-label="Close" ref={closeRef}><Icon name="close" /></button>
+        </div>
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
 }

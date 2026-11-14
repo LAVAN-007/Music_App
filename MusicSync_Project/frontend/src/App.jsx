@@ -48,7 +48,10 @@ export default function App() {
 
   const home = phase === 'home';
   const library = useLibrary(home, onUnauthorized);
-  const playlists = usePlaylists(home, onUnauthorized);
+  const playlists = usePlaylists(home, onUnauthorized, (shared) => {
+    toast(`${shared.from} shared the playlist "${shared.name}" with you`);
+    playMessageSound();
+  });
   const friends = useFriends(home, onUnauthorized, (name) => {
     toast(`${name} sent you a friend request`);
     playMessageSound();

@@ -152,6 +152,27 @@ class ApiIntegrationTests {
                 .andExpect(jsonPath("$", hasSize(1))).andExpect(jsonPath("$[0].songs", hasSize(1))).andExpect(jsonPath("$[0].songs[0].id").value(3));
         mvc.perform(get("/api/playlists").header("Authorization", farid)).andExpect(jsonPath("$", hasSize(0)));
 
+        // Sharing: only with friends; the friend gets their own copy when they accept.
+        mvc.perform(post("/api/playlists/" + id + "/share").header("Authorization", esha).contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"Farid\"}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/friends").header("Authorization", esha).contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"Farid\"}"));
+        mvc.perform(post("/api/friends/accept").header("Authorization", farid).contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"Esha\"}"));
+        mvc.perform(post("/api/playlists/" + id + "/share").header("Authorization", esha).contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"farid\"}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/playlists/" + id + "/share").header("Authorization", esha).contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"farid\"}"))
+                .andExpect(status().isOk());
+        String sharedBody = mvc.perform(get("/api/playlists/shared").header("Authorization", farid))
+                .andExpect(jsonPath("$", hasSize(1))).andExpect(jsonPath("$[0].from").value("Esha"))
+                .andExpect(jsonPath("$[0].name").value("Road trip")).andExpect(jsonPath("$[0].count").value(1))
+                .andReturn().getResponse().getContentAsString();
+        String shareId = sharedBody.replaceAll(".*\"shareId\":(\\d+).*", "$1");
+        mvc.perform(post("/api/playlists/shared/" + shareId + "/accept").header("Authorization", esha)).andExpect(status().isNotFound());
+        mvc.perform(post("/api/playlists/shared/" + shareId + "/accept").header("Authorization", farid))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Road trip")).andExpect(jsonPath("$.songs", hasSize(1)));
+        mvc.perform(get("/api/playlists/shared").header("Authorization", farid)).andExpect(jsonPath("$", hasSize(0)));
+        mvc.perform(get("/api/playlists").header("Authorization", farid))
+                .andExpect(jsonPath("$", hasSize(1))).andExpect(jsonPath("$[0].songs[0].title").value("SoundHelix Song 3"));
+
         mvc.perform(put("/api/playlists/" + id).header("Authorization", esha).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Drive\"}"))
                 .andExpect(jsonPath("$.name").value("Drive"));
         mvc.perform(delete("/api/playlists/" + id).header("Authorization", farid)).andExpect(status().isNotFound());

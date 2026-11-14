@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../lib/api';
 import { prepareImage } from '../lib/image';
 import { Avatar, Icon, Spinner } from './ui';
@@ -191,11 +192,12 @@ export default function ChatPanel({ code, messages, me, onSend, disabled, toast 
         </button>
       </form>
 
-      {viewer && (
+      {viewer && createPortal(
         <div className="overlay viewer" onClick={() => setViewer(null)} role="dialog" aria-modal="true" aria-label="Picture">
           <img src={viewer} alt="" onClick={e => e.stopPropagation()} />
           <button className="icon-btn viewer-close" onClick={() => setViewer(null)} aria-label="Close picture"><Icon name="close" /></button>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

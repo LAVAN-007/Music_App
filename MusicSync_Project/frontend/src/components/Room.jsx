@@ -288,7 +288,7 @@ function Player({ room, solo = false, code, subscribe, user, library, playlists,
       )}
 
       <aside className="panel panel-library">
-        <Library library={library} playlists={playlists} currentId={state?.songId} playing={player.playing}
+        <Library library={library} playlists={playlists} friends={friends.friends} currentId={state?.songId} playing={player.playing}
           onPlay={playSong} onPlayAll={playAll} onShuffleAll={shuffleAll} onQueue={queueSong} toast={toast} />
       </aside>
 

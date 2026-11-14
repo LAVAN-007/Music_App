@@ -3,7 +3,13 @@ package com.lavu.musicsyncbackend.controller;
 import com.lavu.musicsyncbackend.auth.ApiException;
 import com.lavu.musicsyncbackend.auth.AuthInterceptor;
 import com.lavu.musicsyncbackend.auth.AuthUser;
+import com.lavu.musicsyncbackend.model.Friendship;
+import com.lavu.musicsyncbackend.model.FriendshipRepository;
 import com.lavu.musicsyncbackend.model.Playlist;
+import com.lavu.musicsyncbackend.model.PlaylistShare;
+import com.lavu.musicsyncbackend.model.PlaylistShareRepository;
+import com.lavu.musicsyncbackend.model.User;
+import com.lavu.musicsyncbackend.model.UserRepository;
 import com.lavu.musicsyncbackend.model.PlaylistRepository;
 import com.lavu.musicsyncbackend.model.PlaylistSong;
 import com.lavu.musicsyncbackend.model.PlaylistSongRepository;
@@ -32,15 +38,25 @@ public class PlaylistController {
     public record View(long id, String name, List<Item> songs) {}
     public record NameRequest(String name) {}
     public record SongRequest(Integer songId) {}
+    public record ShareRequest(String username) {}
+    /** A playlist a friend has offered: accept it to get your own copy. */
+    public record Shared(long shareId, String from, String name, long count, String cover) {}
 
     private final PlaylistRepository playlists;
     private final PlaylistSongRepository songs;
     private final SongCatalog catalog;
+    private final PlaylistShareRepository shares;
+    private final UserRepository users;
+    private final FriendshipRepository friendships;
 
-    public PlaylistController(PlaylistRepository playlists, PlaylistSongRepository songs, SongCatalog catalog) {
+    public PlaylistController(PlaylistRepository playlists, PlaylistSongRepository songs, SongCatalog catalog,
+                              PlaylistShareRepository shares, UserRepository users, FriendshipRepository friendships) {
         this.playlists = playlists;
         this.songs = songs;
         this.catalog = catalog;
+        this.shares = shares;
+        this.users = users;
+        this.friendships = friendships;
     }
 
     @GetMapping
@@ -75,6 +91,7 @@ public class PlaylistController {
     public Map<String, Boolean> delete(@PathVariable long id, @RequestAttribute(AuthInterceptor.USER_ATTR) AuthUser me) {
         Playlist playlist = own(id, me);
         songs.deleteByPlaylistId(playlist.getId());
+        shares.deleteByPlaylistId(playlist.getId());
         playlists.delete(playlist);
         return Map.of("ok", true);
     }
@@ -99,6 +116,69 @@ public class PlaylistController {
                                            @RequestAttribute(AuthInterceptor.USER_ATTR) AuthUser me) {
         Playlist playlist = own(id, me);
         songs.findByIdAndPlaylistId(itemId, playlist.getId()).ifPresent(songs::delete);
+        return Map.of("ok", true);
+    }
+
+    /** Offers one of your playlists to a friend. */
+    @PostMapping("/{id}/share")
+    public Map<String, Boolean> share(@PathVariable long id, @RequestBody ShareRequest body,
+                                      @RequestAttribute(AuthInterceptor.USER_ATTR) AuthUser me) {
+        Playlist playlist = own(id, me);
+        String key = body == null || body.username() == null ? "" : body.username().trim().replaceAll("\\s+", " ").toLowerCase();
+        User friend = users.findByUsername(key)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Nobody has that username"));
+        boolean friends = friendships.findByRequesterIdAndAddresseeId(me.id(), friend.getId()).filter(Friendship::isAccepted).isPresent()
+                || friendships.findByRequesterIdAndAddresseeId(friend.getId(), me.id()).filter(Friendship::isAccepted).isPresent();
+        if (!friends) throw new ApiException(HttpStatus.FORBIDDEN, "You can only share playlists with your friends");
+        if (!shares.existsByPlaylistIdAndToUserId(playlist.getId(), friend.getId())) {
+            shares.save(new PlaylistShare(playlist.getId(), me.id(), friend.getId()));
+        }
+        return Map.of("ok", true);
+    }
+
+    /** Playlists friends have shared with you that you have not answered yet. */
+    @GetMapping("/shared")
+    public List<Shared> shared(@RequestAttribute(AuthInterceptor.USER_ATTR) AuthUser me) {
+        List<Shared> result = new ArrayList<>();
+        for (PlaylistShare share : shares.findByToUserIdOrderByIdDesc(me.id())) {
+            Playlist playlist = playlists.findById(share.getPlaylistId()).orElse(null);
+            User from = users.findById(share.getFromUserId()).orElse(null);
+            if (playlist == null || from == null) {
+                shares.delete(share); // the playlist was deleted since
+                continue;
+            }
+            List<PlaylistSong> items = songs.findByPlaylistIdOrderByIdAsc(playlist.getId());
+            result.add(new Shared(share.getId(), from.getDisplayName(), playlist.getName(), items.size(),
+                    items.isEmpty() ? "" : items.get(0).getThumbnail()));
+        }
+        return result;
+    }
+
+    /** Copies the shared playlist, as it is now, into your own playlists. */
+    @PostMapping("/shared/{shareId}/accept")
+    public View accept(@PathVariable long shareId, @RequestAttribute(AuthInterceptor.USER_ATTR) AuthUser me) {
+        PlaylistShare share = shares.findByIdAndToUserId(shareId, me.id())
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "That shared playlist is no longer available"));
+        Playlist source = playlists.findById(share.getPlaylistId()).orElse(null);
+        if (source == null) {
+            shares.delete(share);
+            throw new ApiException(HttpStatus.NOT_FOUND, "That shared playlist is no longer available");
+        }
+        if (playlists.countByUserId(me.id()) >= MAX_PLAYLISTS) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "You've reached the limit of " + MAX_PLAYLISTS + " playlists");
+        }
+        Playlist copy = playlists.save(new Playlist(me.id(), source.getName()));
+        List<Item> items = new ArrayList<>();
+        for (PlaylistSong song : songs.findByPlaylistIdOrderByIdAsc(source.getId())) {
+            items.add(item(songs.save(PlaylistSong.copyOf(song, copy.getId()))));
+        }
+        shares.delete(share);
+        return new View(copy.getId(), copy.getName(), items);
+    }
+
+    @DeleteMapping("/shared/{shareId}")
+    public Map<String, Boolean> decline(@PathVariable long shareId, @RequestAttribute(AuthInterceptor.USER_ATTR) AuthUser me) {
+        shares.findByIdAndToUserId(shareId, me.id()).ifPresent(shares::delete);
         return Map.of("ok", true);
     }
 

@@ -67,6 +67,8 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
   const endedVersion = useRef(-1);
   const endedAt = useRef(0);
   const seekLead = useRef(MIN_SEEK_LEAD);
+  const quickLead = useRef(0.08); // how long a jump within downloaded audio takes on this device
+  const quickSeek = useRef(false);
   const lastStall = useRef(-AFTER_STALL_MS);
   const rejoinAt = useRef(0); // while set: paused ahead of the room, buffering until the room gets there
   const seekStarted = useRef(0);
@@ -189,12 +191,17 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
       correction.current = 0;
       audio.playbackRate = 1;
       if (ready || audio.paused) {
-        seekStarted.current = 0;
-        audio.currentTime = Math.max(0, target);
+        // Even a jump inside downloaded audio takes the browser a moment while the room moves on;
+        // aim that little bit ahead so the listener lands on the beat instead of just behind it.
+        const lead = audio.paused ? 0 : quickLead.current;
+        seekStarted.current = audio.paused ? 0 : now;
+        quickSeek.current = true;
+        audio.currentTime = Math.max(0, target + lead);
       } else {
         // Not downloaded yet: go a little ahead of the room, buffer there, and rejoin when it arrives.
         const lead = seekLead.current;
         seekStarted.current = now;
+        quickSeek.current = false;
         rejoinAt.current = now + lead * 1000;
         pauseOurselves(audio);
         audio.currentTime = Math.max(0, target + lead);
@@ -397,7 +404,8 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
       if (seekStarted.current) {
         // How long this connection needed to fetch audio at a new position; the next such jump aims that far ahead.
         const cost = (performance.now() - seekStarted.current) / 1000;
-        seekLead.current = Math.max(MIN_SEEK_LEAD, Math.min(MAX_SEEK_LEAD, seekLead.current * 0.4 + cost * 1.25 * 0.6));
+        if (quickSeek.current) quickLead.current = Math.min(0.35, quickLead.current * 0.5 + cost * 0.5);
+        else seekLead.current = Math.max(MIN_SEEK_LEAD, Math.min(MAX_SEEK_LEAD, seekLead.current * 0.4 + cost * 1.25 * 0.6));
         seekStarted.current = 0;
       }
     };

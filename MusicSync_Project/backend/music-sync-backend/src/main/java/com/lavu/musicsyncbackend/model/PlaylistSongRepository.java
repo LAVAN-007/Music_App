@@ -12,6 +12,7 @@ public interface PlaylistSongRepository extends JpaRepository<PlaylistSong, Long
     Optional<PlaylistSong> findByIdAndPlaylistId(Long id, Long playlistId);
     boolean existsByPlaylistIdAndUrl(Long playlistId, String url);
     long countByPlaylistId(Long playlistId);
+    List<PlaylistSong> findByPlaylistIdOrderByIdAsc(Long playlistId);
 
     @Transactional
     void deleteByPlaylistId(Long playlistId);
