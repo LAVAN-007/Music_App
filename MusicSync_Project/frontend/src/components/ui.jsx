@@ -3,6 +3,7 @@ import { avatarColor, initials } from '../lib/util';
 
 const PATHS = {
   play: 'M8 5v14l11-7z',
+  back: 'M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z',
   pause: 'M6 19h4V5H6v14zm8-14v14h4V5h-4z',
   next: 'M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z',
   prev: 'M6 6h2v12H6zm3.5 6l8.5 6V6z',
@@ -71,4 +72,9 @@ export function Artwork({ src, className = '' }) {
 
 export function Spinner() {
   return <span className="spinner" role="status" aria-label="Loading" />;
+}
+
+/** Small coloured label naming a song's category. */
+export function CategoryTag({ name, color }) {
+  return <span className="song-tag" style={{ '--c': color }}>{name}</span>;
 }

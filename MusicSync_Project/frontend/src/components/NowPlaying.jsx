@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { formatTime } from '../lib/util';
-import { Artwork, Icon, Spinner } from './ui';
+import { categoryColor } from '../lib/categories';
+import { Artwork, CategoryTag, Icon, Spinner } from './ui';
 
 export default function NowPlaying({ song, state, player, libraryLoading, others, activity, volume, onVolume,
   onToggle, onNext, onPrev, onSeek, onInvite }) {
@@ -52,6 +53,9 @@ export default function NowPlaying({ song, state, player, libraryLoading, others
       <div className="now-meta">
         <h1 className="now-title" title={song.title}>{song.title}</h1>
         <p className="now-artist">{song.artist || 'Unknown artist'}</p>
+        {song.category && (
+          <p className="now-tag"><CategoryTag name={song.category} color={categoryColor(song.category)} /></p>
+        )}
         <p className="now-activity" aria-live="polite">
           {player.failed ? "This track couldn't be loaded. Try skipping to the next one." : activity || ' '}
         </p>

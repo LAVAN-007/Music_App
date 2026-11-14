@@ -30,16 +30,19 @@ const MAX_SEEK_LEAD = 1.5;
  */
 const OPTIMISTIC_MS = 2500; // how long a local action stands in for the server's answer
 
+/** Identifies the playback part of a room state; queue edits leave it unchanged. */
+const playbackKey = (s) => (s ? `${s.songId}|${s.position}|${s.playing}|${s.updatedAt}` : '');
+
 export function usePlayer(audioRef, state, song, send, alone = false) {
   const [blocked, setBlocked] = useState(false); // browser refused to autoplay
   const [failedId, setFailedId] = useState(null); // id of a song that could not be loaded
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [optimistic, setOptimistic] = useState(null); // { playing, version }: what this listener just asked for
+  const [optimistic, setOptimistic] = useState(null); // { playing, key }: what this listener just asked for
 
   const stateRef = useLatest(state);
   const songRef = useLatest(song);
-  const pending = useRef(null); // { version, until }: hands off the audio until the server answers
+  const pending = useRef(null); // { key, until }: hands off the audio until the server answers
   const pendingTimer = useRef(0);
   const loadedUrl = useRef(null);
   const sendRef = useLatest(send);
@@ -63,7 +66,7 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
     const s = stateRef.current;
     if (!audio || !s) return;
     if (pending.current) {
-      if (pending.current.version === s.version && performance.now() < pending.current.until) return;
+      if (pending.current.key === playbackKey(s) && performance.now() < pending.current.until) return;
       pending.current = null;
     }
     audio.muted = false;
@@ -155,9 +158,9 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
 
   /** Lets a local action stand until the server's next state, or gives up after a moment. */
   const hold = useCallback((playing) => {
-    const version = stateRef.current?.version ?? -1;
-    pending.current = { version, until: performance.now() + OPTIMISTIC_MS };
-    setOptimistic({ playing, version });
+    const key = playbackKey(stateRef.current);
+    pending.current = { key, until: performance.now() + OPTIMISTIC_MS };
+    setOptimistic({ playing, key });
     clearTimeout(pendingTimer.current);
     pendingTimer.current = setTimeout(() => {
       // No answer (command lost or refused): fall back to what the room is really doing.
@@ -215,9 +218,10 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
   }, [audioRef, hold, load]);
 
   // Apply every state change immediately, then keep correcting drift.
+  // Queue edits also raise the version, but they are not a reason to touch the audio.
   useEffect(() => {
     reconcile(true);
-  }, [reconcile, state?.version, state?.songId]);
+  }, [reconcile, state?.songId, state?.position, state?.playing, state?.updatedAt]);
 
   useEffect(() => {
     const timer = setInterval(() => reconcile(false), 250);
@@ -269,6 +273,6 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
     audio.play().then(() => { setBlocked(false); reconcile(true, true); }).catch(() => {});
   }, [audioRef, reconcile]);
 
-  const playing = optimistic && optimistic.version === state?.version ? optimistic.playing : !!state?.playing;
+  const playing = optimistic && optimistic.key === playbackKey(state) ? optimistic.playing : !!state?.playing;
   return { blocked, failed: !!song && failedId === song.id, time, duration, playing, unblock, play, pause, seek, prepare };
 }

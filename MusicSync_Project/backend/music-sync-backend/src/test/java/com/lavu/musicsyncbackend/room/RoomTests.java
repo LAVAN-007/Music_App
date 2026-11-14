@@ -121,6 +121,24 @@ class RoomTests {
     }
 
     @Test
+    void queueEditsLeavePlaybackUntouched() {
+        room.apply(cmd("SELECT", 2, null, null, null));
+        room.apply(cmd("SEEK", null, 75.0, null, null));
+        RoomState before = room.state();
+
+        room.apply(cmd("QUEUE_ADD", 3, null, null, null));
+        room.apply(cmd("QUEUE_ADD", 4, null, null, null));
+        room.apply(cmd("QUEUE_REMOVE", null, null, 0, null));
+        room.apply(cmd("QUEUE_CLEAR", null, null, null, null));
+        RoomState after = room.state();
+
+        assertEquals(before.position(), after.position());
+        assertEquals(before.updatedAt(), after.updatedAt(), "the playback clock must not restart");
+        assertEquals(before.playing(), after.playing());
+        assertEquals(before.version() + 4, after.version(), "listeners still receive the new queue");
+    }
+
+    @Test
     void queueEditing() {
         room.apply(cmd("QUEUE_ADD", 2, null, null, null));
         room.apply(cmd("QUEUE_ADD", 3, null, null, null));

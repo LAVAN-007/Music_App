@@ -168,7 +168,11 @@ public class Room {
                 return false;
             }
         }
-        touch();
+        if (cmd.type().startsWith("QUEUE_") && !cmd.type().equals("QUEUE_PLAY")) {
+            version++; // the queue changed, playback did not: its position and clock stay exactly as they were
+        } else {
+            touch();
+        }
         return true;
     }
 
