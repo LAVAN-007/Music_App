@@ -129,6 +129,15 @@ public class SongCatalog {
         return index.get(url);
     }
 
+    /** A random song other than {@code exclude}, for shuffle play. */
+    public Integer randomId(Integer exclude) {
+        int size = songs.size();
+        if (size == 0) return null;
+        if (size == 1) return 1;
+        int id = java.util.concurrent.ThreadLocalRandom.current().nextInt(size) + 1;
+        return exclude != null && id == exclude ? id % size + 1 : id;
+    }
+
     public Integer firstId() {
         return songs.isEmpty() ? null : 1;
     }

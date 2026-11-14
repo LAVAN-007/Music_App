@@ -100,6 +100,53 @@ class RoomTests {
     }
 
     @Test
+    void theRoomWaitsForEveryListenerToFinishTheTrack() {
+        room.join("s1", "Asha");
+        room.join("s2", "Bala");
+        room.apply(cmd("SELECT", 2, null, null, null));
+        long version = room.state().version();
+
+        assertFalse(room.apply(cmd("ENDED", 2, null, null, version), "s1"), "Bala is still hearing the last seconds");
+        assertEquals(2, room.state().songId());
+        assertFalse(room.apply(cmd("ENDED", 2, null, null, version), "s1"), "reporting again changes nothing");
+        assertTrue(room.apply(cmd("ENDED", 2, null, null, version), "s2"), "once everyone has finished the room moves on");
+        assertEquals(3, room.state().songId());
+
+        // A listener who leaves is no longer waited for.
+        version = room.state().version();
+        assertFalse(room.apply(cmd("ENDED", 3, null, null, version), "s1"));
+        room.leave("s2");
+        assertTrue(room.apply(cmd("ENDED", 3, null, null, version), "s1"));
+        assertEquals(4, room.state().songId());
+    }
+
+    @Test
+    void shuffleChoosesTheNextSongAtRandomWithoutTouchingPlayback() {
+        room.apply(cmd("SELECT", 2, null, null, null));
+        RoomState before = room.state();
+        assertTrue(room.apply(cmd("SHUFFLE", null, null, 1, null)));
+        assertFalse(room.apply(cmd("SHUFFLE", null, null, 1, null)), "already on");
+        RoomState on = room.state();
+        assertTrue(on.shuffle());
+        assertEquals(before.updatedAt(), on.updatedAt(), "the playback clock must not restart");
+        assertEquals(before.position(), on.position());
+
+        room.apply(cmd("QUEUE_ADD", 5, null, null, null));
+        room.apply(cmd("NEXT", null, null, null, null));
+        assertEquals(5, room.state().songId(), "the queue still comes first");
+        java.util.Set<Integer> seen = new java.util.HashSet<>();
+        for (int i = 0; i < 40; i++) {
+            int current = room.state().songId();
+            room.apply(cmd("NEXT", null, null, null, null));
+            assertNotEquals(current, room.state().songId(), "never the same song twice in a row");
+            seen.add(room.state().songId());
+        }
+        assertTrue(seen.size() > 3, "songs are picked from across the library: " + seen);
+        assertTrue(room.apply(cmd("SHUFFLE", null, null, 0, null)));
+        assertFalse(room.state().shuffle());
+    }
+
+    @Test
     void prevGoesBackOrRestarts() {
         room.apply(cmd("SELECT", 4, null, null, null));
         room.apply(cmd("PREV", null, null, null, null));

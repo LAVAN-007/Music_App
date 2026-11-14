@@ -17,6 +17,7 @@ const MIN_SEEK_LEAD = 0.5; // a jump to audio that is not downloaded yet aims at
 const MAX_SEEK_LEAD = 4; // ...and at most this far, depending on how slow the connection has been
 const HARD_SEEK_UNBUFFERED = 8; // playing fine but this far behind: jump even though it means buffering
 const STALLED_SEEK_COOLDOWN = 4000;
+const TAIL_SECONDS = 3; // a listener this close to the end is allowed to finish the song
 const AFTER_STALL_MS = 15000; // just after a buffering gap, a quick jump back into step beats a slow drift
 
 /** True when at least a second of audio from `time` (or everything up to the end) is already downloaded. */
@@ -54,6 +55,7 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [buffering, setBuffering] = useState(false); // waiting for the network mid-song
+  const [interrupted, setInterrupted] = useState(false); // the phone took the speaker (a call, another app)
   const [optimistic, setOptimistic] = useState(null); // { playing, key }: what this listener just asked for
 
   const stateRef = useLatest(state);
@@ -73,6 +75,16 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
   const aloneRef = useLatest(alone);
   const mutedRef = useLatest(muted); // this listener's own mute; nobody else is affected
   const startTimer = useRef(0);
+  const ourPause = useRef(false); // the next 'pause' event is one we asked for
+  const interruptedRef = useRef(false);
+  const pausedForInterruption = useRef(false); // we paused playback itself (nobody else was listening)
+  const playRef = useRef(null);
+
+  const pauseOurselves = useCallback((audio) => {
+    if (audio.paused) return;
+    ourPause.current = true;
+    audio.pause();
+  }, []);
   const reconcileRef = useRef(null);
 
   // The server only moves on once the room's own clock reaches the end of the track, so a listener
@@ -80,7 +92,7 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
   const reportEnded = useCallback(() => {
     const s = stateRef.current;
     const now = performance.now();
-    if (!s || (endedVersion.current === s.version && now - endedAt.current < 1000)) return;
+    if (!s || (endedVersion.current === s.version && now - endedAt.current < 400)) return;
     const duration = audioRef.current?.duration;
     const command = { type: 'ENDED', songId: s.songId, version: s.version };
     if (Number.isFinite(duration)) command.position = duration;
@@ -96,12 +108,26 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
       pending.current = null;
     }
     audio.muted = mutedRef.current;
-    if (!audio.currentSrc || audio.readyState < 1) return;
-
     const target = s.playing ? s.position + (serverNow() - s.updatedAt) / 1000 : s.position;
+    const measured = Number.isFinite(audio.duration);
+    const length = measured ? audio.duration : (songRef.current?.duration || 0) + 1; // the library's figure is rounded
+    const roomAtEnd = s.playing && length > 1 && target >= length - 0.15;
+
+    if (!audio.currentSrc || audio.readyState < 1 || interruptedRef.current) {
+      // Not playing this track at all (still loading, or a call has the speaker): don't make the others wait.
+      if (roomAtEnd) reportEnded();
+      return;
+    }
+
     const leftAlone = aloneRef.current && !justChanged && !audio.paused;
-    if (s.playing && !leftAlone && Number.isFinite(audio.duration) && target >= audio.duration - 0.15) {
-      reportEnded(); // we joined (or woke up) after this track should have finished
+    if (roomAtEnd && !leftAlone) {
+      const remaining = audio.duration - audio.currentTime;
+      if (audio.paused || audio.ended || remaining > TAIL_SECONDS) {
+        reportEnded(); // we joined (or woke up) after this track should have finished
+        return;
+      }
+      // A little behind the room and still hearing the last moments: let them play out untouched.
+      // The room waits for this listener's own end-of-track report before moving on.
       return;
     }
 
@@ -115,7 +141,7 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
     const wait = s.updatedAt - serverNow();
     if (s.playing && wait > 0) {
       // Playback is scheduled a moment from now (new song or seek): buffer at the start point, then begin on time.
-      if (!audio.paused) audio.pause();
+      pauseOurselves(audio);
       audio.playbackRate = 1;
       if (Math.abs(audio.currentTime - s.position) > 0.05 && !audio.seeking) audio.currentTime = s.position;
       startTimer.current = setTimeout(() => reconcileRef.current?.(true), wait);
@@ -125,7 +151,7 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
     const drift = audio.currentTime - target;
     const now = performance.now();
     if (!s.playing) {
-      if (!audio.paused) audio.pause();
+      pauseOurselves(audio);
       audio.playbackRate = 1;
       correction.current = 0;
       if (Math.abs(drift) > 0.05 && !audio.seeking) audio.currentTime = target;
@@ -170,7 +196,7 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
         const lead = seekLead.current;
         seekStarted.current = now;
         rejoinAt.current = now + lead * 1000;
-        audio.pause();
+        pauseOurselves(audio);
         audio.currentTime = Math.max(0, target + lead);
         startTimer.current = setTimeout(() => reconcileRef.current?.(false), lead * 1000);
         return;
@@ -194,7 +220,7 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
         if (e.name === 'NotAllowedError') setBlocked(true);
       });
     }
-  }, [audioRef, stateRef, aloneRef, mutedRef, reportEnded]);
+  }, [audioRef, stateRef, songRef, aloneRef, mutedRef, reportEnded, pauseOurselves]);
 
   useEffect(() => {
     reconcileRef.current = reconcile;
@@ -236,6 +262,9 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
   const play = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
+    interruptedRef.current = false;
+    pausedForInterruption.current = false;
+    setInterrupted(false);
     hold(true);
     audio.muted = mutedRef.current;
     audio.playbackRate = 1;
@@ -248,8 +277,8 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
     if (!audio) return;
     hold(false);
     clearTimeout(startTimer.current);
-    audio.pause();
-  }, [audioRef, hold]);
+    pauseOurselves(audio);
+  }, [audioRef, hold, pauseOurselves]);
 
   /** Call after sending SEEK: jumps this listener immediately and buffers there until playback resumes. */
   const seek = useCallback((position) => {
@@ -258,9 +287,9 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
     if (!audio || !s || audio.readyState < 1) return;
     hold(s.playing);
     clearTimeout(startTimer.current);
-    if (!audio.paused) audio.pause();
+    pauseOurselves(audio);
     audio.currentTime = position;
-  }, [audioRef, stateRef, hold]);
+  }, [audioRef, stateRef, hold, pauseOurselves]);
 
   /**
    * Call from a click, after sending SELECT: starts buffering the chosen song right away.
@@ -269,6 +298,9 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
   const prepare = useCallback((next) => {
     const audio = audioRef.current;
     if (!audio || !next?.url) return;
+    interruptedRef.current = false;
+    pausedForInterruption.current = false;
+    setInterrupted(false);
     hold(true);
     clearTimeout(startTimer.current);
     audio.muted = true;
@@ -280,6 +312,64 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
     const audio = audioRef.current;
     if (audio && !pending.current) audio.muted = muted; // while a song is being prepared it stays silent anyway
   }, [audioRef, muted]);
+
+  useEffect(() => { playRef.current = play; }, [play]);
+
+  /**
+   * The phone took the speaker away (an incoming call, another app starting to play): the browser
+   * pauses us. We stop trying to play, and carry on by ourselves once the speaker is free again.
+   * Someone listening alone is paused where they were; in company the room plays on and this
+   * listener rejoins it at the live position.
+   */
+  const resume = useCallback(() => {
+    if (!interruptedRef.current) return;
+    interruptedRef.current = false;
+    setInterrupted(false);
+    if (pausedForInterruption.current) {
+      pausedForInterruption.current = false;
+      if (!stateRef.current?.playing) {
+        if (sendRef.current({ type: 'PLAY' })) playRef.current?.();
+        return;
+      }
+    }
+    reconcileRef.current?.(true, true);
+  }, [stateRef, sendRef]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return undefined;
+    const onPause = () => {
+      if (ourPause.current) { ourPause.current = false; return; }
+      const s = stateRef.current;
+      const atEnd = audio.ended || (Number.isFinite(audio.duration) && audio.currentTime >= audio.duration - 0.5);
+      const reloading = audio.readyState === 0; // the song is being swapped, not interrupted
+      if (!s?.playing || atEnd || reloading || pending.current || interruptedRef.current) return;
+      interruptedRef.current = true;
+      setInterrupted(true);
+      if (aloneRef.current) {
+        // Nobody else is listening: hold the song here instead of letting it run on unheard.
+        pausedForInterruption.current = sendRef.current({ type: 'PAUSE', position: audio.currentTime });
+      }
+    };
+    const onPlay = () => resume(); // the browser handed the speaker back and resumed us
+    const onReturn = () => { if (!document.hidden) resume(); };
+    const session = navigator.audioSession; // Safari: reports interruptions directly
+    const onSession = () => { if (session.state === 'active') resume(); };
+    audio.addEventListener('pause', onPause);
+    audio.addEventListener('play', onPlay);
+    document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener('focus', onReturn);
+    window.addEventListener('pageshow', onReturn);
+    session?.addEventListener?.('statechange', onSession);
+    return () => {
+      audio.removeEventListener('pause', onPause);
+      audio.removeEventListener('play', onPlay);
+      document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener('focus', onReturn);
+      window.removeEventListener('pageshow', onReturn);
+      session?.removeEventListener?.('statechange', onSession);
+    };
+  }, [audioRef, stateRef, sendRef, aloneRef, resume]);
 
   // Apply every state change immediately, then keep correcting drift.
   // Queue edits also raise the version, but they are not a reason to touch the audio.
@@ -339,9 +429,10 @@ export function usePlayer(audioRef, state, song, send, alone = false, muted = fa
   const unblock = useCallback(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    audio.play().then(() => { setBlocked(false); reconcile(true, true); }).catch(() => {});
+    interruptedRef.current = false;
+    audio.play().then(() => { setBlocked(false); setInterrupted(false); reconcile(true, true); }).catch(() => {});
   }, [audioRef, reconcile]);
 
   const playing = optimistic && optimistic.key === playbackKey(state) ? optimistic.playing : !!state?.playing;
-  return { blocked, failed: !!song && failedId === song.id, buffering: buffering && playing && !blocked, time, duration, playing, unblock, play, pause, seek, prepare };
+  return { blocked, interrupted, resume, failed: !!song && failedId === song.id, buffering: buffering && playing && !blocked && !interrupted, time, duration, playing, unblock, play, pause, seek, prepare };
 }

@@ -7,4 +7,4 @@ import java.util.List;
  * {@code position + (serverNow - updatedAt) / 1000}.
  */
 public record RoomState(Integer songId, double position, boolean playing, long updatedAt, long version,
-                        List<Integer> queue) {}
+                        List<Integer> queue, boolean shuffle) {}

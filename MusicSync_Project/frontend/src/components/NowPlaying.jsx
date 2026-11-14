@@ -3,7 +3,7 @@ import { formatTime } from '../lib/util';
 import { categoryColor } from '../lib/categories';
 import { Artwork, CategoryTag, Icon, Spinner } from './ui';
 
-export default function NowPlaying({ song, state, player, libraryLoading, others, solo, activity, volume, onVolume, muted, onMute,
+export default function NowPlaying({ song, state, player, libraryLoading, others, solo, activity, volume, onVolume, muted, onMute, shuffle, onShuffle,
   onToggle, onNext, onPrev, onSeek, onInvite }) {
   const [dragValue, setDragValue] = useState(null);
   const duration = player.duration || song?.duration || 0;
@@ -43,6 +43,13 @@ export default function NowPlaying({ song, state, player, libraryLoading, others
       <div className="now-art-wrap">
         {song.thumbnail && <img className="now-glow" src={song.thumbnail} alt="" aria-hidden="true" />}
         <Artwork src={song.thumbnail} className={`now-art ${playing ? 'playing' : ''}`} />
+        {player.interrupted && !player.blocked && (
+          <button className="tap-overlay" onClick={player.resume}>
+            <span className="tap-circle"><Icon name="play" size={34} /></span>
+            <span>Paused for a call or another app</span>
+            <span className="tap-note">Resumes by itself · tap to resume now</span>
+          </button>
+        )}
         {player.blocked && playing && (
           <button className="tap-overlay" onClick={player.unblock}>
             <span className="tap-circle"><Icon name="play" size={34} /></span>
@@ -59,6 +66,7 @@ export default function NowPlaying({ song, state, player, libraryLoading, others
         )}
         <p className="now-activity" aria-live="polite">
           {player.failed ? "This track couldn't be loaded. Try skipping to the next one."
+            : player.interrupted ? 'Paused while something else uses your speaker — it resumes by itself'
             : muted ? 'Muted on your device only — everyone else still hears the music'
             : player.buffering ? 'Slow connection — catching up with the room…' : activity || ' '}
         </p>
@@ -74,6 +82,10 @@ export default function NowPlaying({ song, state, player, libraryLoading, others
       </div>
 
       <div className="controls">
+        <button className={`icon-btn shuffle-btn ${shuffle ? 'on' : ''}`} onClick={onShuffle} aria-pressed={shuffle}
+          aria-label={shuffle ? 'Turn shuffle off' : 'Shuffle'} title={shuffle ? 'Shuffle is on' : 'Shuffle'}>
+          <Icon name="shuffle" size={22} />
+        </button>
         <button className="icon-btn large" onClick={onPrev} aria-label="Previous"><Icon name="prev" size={28} /></button>
         <button className="play-btn" onClick={onToggle} aria-label={playing ? 'Pause' : 'Play'}>
           <Icon name={playing ? 'pause' : 'play'} size={32} />

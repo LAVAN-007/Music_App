@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { Bars, Brand, Icon, Spinner } from './ui';
+import { Brand, Icon, Spinner } from './ui';
 
 const USERNAME = /^[A-Za-z0-9][A-Za-z0-9 _.-]{1,18}[A-Za-z0-9]$/;
 const MIN_PASSWORD = 6;
@@ -82,22 +82,32 @@ export default function AuthScreen({ inviteCode, onSignedIn }) {
 
   return (
     <div className="auth">
-      <div className="glow glow-a" /><div className="glow glow-b" />
-      <section className="auth-hero">
-        <Brand />
-        <h1 className="auth-title">Your music, <span className="hl">alone or perfectly in sync.</span></h1>
-        <p className="auth-lead">Play anything on your own, keep your playlists forever, and start a room when you want friends to hear the same beat at the same second.</p>
-        <ul className="auth-points">
-          <li><Icon name="check" size={16} />Listen straight away, no room needed</li>
-          <li><Icon name="check" size={16} />Build playlists that stay with your account</li>
-          <li><Icon name="check" size={16} />Add friends and join them in one tap</li>
-        </ul>
-        <Bars />
-      </section>
+      <header className="auth-top"><Brand /></header>
+      <div className="auth-shell">
+        <section className="auth-visual">
+          <div className="auth-grid" />
+          <span className="auth-label">MusicSync</span>
+          <h1 className="auth-title">Your music, <span className="hl">alone or perfectly in sync.</span></h1>
+          <div className="orbit" aria-hidden="true">
+            <span className="orbit-ring r1"><i /></span>
+            <span className="orbit-ring r2"><i /></span>
+            <span className="orbit-ring r3"><i /></span>
+            <span className="orbit-core"><span className="brand-mark"><i /><i /><i /><i /></span></span>
+            <span className="orbit-node n1"><Icon name="people" size={20} /></span>
+            <span className="orbit-node n2"><Icon name="library" size={20} /></span>
+            <span className="orbit-node n3"><Icon name="chat" size={20} /></span>
+          </div>
+          <ul className="auth-chips">
+            <li><Icon name="music" size={16} />Listen solo</li>
+            <li><Icon name="library" size={16} />Your playlists</li>
+            <li><Icon name="people" size={16} />Friends and rooms</li>
+          </ul>
+        </section>
 
-      <main className="card auth-card">
-        <h2>{isRegister ? 'Create your account' : 'Welcome back'}</h2>
-        <p className="muted">{isRegister ? 'It takes a few seconds. No email needed.' : 'Sign in to pick up where you left off.'}</p>
+        <main className="auth-form">
+          <span className="auth-lock"><Icon name="lock" size={22} /></span>
+          <h2>{isRegister ? 'Create your account' : 'Sign in'}</h2>
+          <p className="muted">{isRegister ? 'It takes a few seconds. No email needed.' : 'Pick up where you left off.'}</p>
 
         {inviteCode && (
           <div className="invite-banner">
@@ -149,7 +159,7 @@ export default function AuthScreen({ inviteCode, onSignedIn }) {
           {isRegister && !password && <p className="hint">At least {MIN_PASSWORD} characters. Longer with numbers or symbols is stronger.</p>}
           {error && <p className="error" role="alert">{error}</p>}
           <button className="btn btn-primary btn-block" type="submit" disabled={busy || !canSubmit}>
-            {busy ? <Spinner /> : isRegister ? 'Create account' : 'Sign in'}
+            {busy ? <Spinner /> : <>{isRegister ? 'Create account' : 'Sign in'} <Icon name="arrow" size={18} /></>}
           </button>
           <p className="muted small auth-foot">
             {isRegister ? 'Already have an account? ' : 'New here? '}
@@ -159,7 +169,9 @@ export default function AuthScreen({ inviteCode, onSignedIn }) {
             {' · '}You stay signed in on this device until you sign out.
           </p>
         </form>
-      </main>
+        </main>
+      </div>
+      <p className="auth-footnote">MusicSync · listen on your own or together</p>
     </div>
   );
 }

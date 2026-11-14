@@ -101,7 +101,7 @@ function SaveDialog({ song, playlists, onClose, toast }) {
   );
 }
 
-export default function Library({ library, playlists, currentId, playing, onPlay, onPlayAll, onQueue, toast }) {
+export default function Library({ library, playlists, currentId, playing, onPlay, onPlayAll, onShuffleAll, onQueue, toast }) {
   const [query, setQuery] = useState('');
   const [view, setView] = useState('browse'); // browse | all | playlists
   const [category, setCategory] = useState(null); // the category that is open, if any
@@ -206,6 +206,11 @@ export default function Library({ library, playlists, currentId, playing, onPlay
             <h3>{openCat.name}</h3>
             <span>{openCat.count.toLocaleString()} songs{openCat.note ? ` · ${openCat.note}` : ''}</span>
           </div>
+          {results.length > 1 && (
+            <button className="icon-btn" onClick={() => onShuffleAll(results)} aria-label={`Shuffle ${openCat.name}`} title="Shuffle play">
+              <Icon name="shuffle" size={20} />
+            </button>
+          )}
           {results.length > 0 && (
             <button className="cat-play" onClick={() => onPlay(results[0], results.map(s => s.id))} aria-label={`Play ${openCat.name}`}>
               <Icon name="play" size={22} />
@@ -215,7 +220,7 @@ export default function Library({ library, playlists, currentId, playing, onPlay
       )}
 
       {openList && (
-        <div className="cat-head" style={{ '--c': '#8b7bff' }}>
+        <div className="cat-head" style={{ '--c': '#2864e8' }}>
           <button className="icon-btn" onClick={() => setListId(null)} aria-label="Back to playlists">
             <Icon name="back" size={20} />
           </button>
@@ -227,6 +232,11 @@ export default function Library({ library, playlists, currentId, playing, onPlay
             title="Delete playlist">
             <Icon name="trash" size={18} />
           </button>
+          {playable.length > 1 && (
+            <button className="icon-btn" onClick={() => onShuffleAll(playable)} aria-label={`Shuffle ${openList.name}`} title="Shuffle play">
+              <Icon name="shuffle" size={20} />
+            </button>
+          )}
           {playable.length > 0 && (
             <button className="cat-play" onClick={() => onPlayAll(playable)} aria-label={`Play ${openList.name}`}>
               <Icon name="play" size={22} />

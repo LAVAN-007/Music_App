@@ -5,7 +5,7 @@ import { playMessageSound } from '../lib/sound';
 import FriendsPanel from './FriendsPanel';
 import { usePlayer } from '../hooks/usePlayer';
 import { useLatest } from '../hooks/useLatest';
-import { formatTime, thumb } from '../lib/util';
+import { formatTime } from '../lib/util';
 import { serverNow } from '../lib/clock';
 import { Avatar, Brand, Icon } from './ui';
 import Library from './Library';
@@ -33,6 +33,7 @@ function describe(event, me, byId) {
     case 'QUEUE_PLAY': return `${who} played ${title(s.songId)} from the queue`;
     case 'QUEUE_REMOVE': return `${who} removed a song from the queue`;
     case 'QUEUE_CLEAR': return `${who} cleared the queue`;
+    case 'SHUFFLE': return `${who} turned shuffle ${s.shuffle ? 'on' : 'off'}`;
     default: return '';
   }
 }
@@ -125,7 +126,9 @@ function Player({ room, solo = false, code, subscribe, user, library, playlists,
   const player = usePlayer(audioRef, state, song, send, solo || room.listeners <= 1, muted);
 
   // Warm up the song that plays next (queue head, else the next one in the library) so it starts on time.
-  const nextId = state?.queue[0] ?? (song ? (library.byId.has(song.id + 1) ? song.id + 1 : library.songs[0]?.id) : null);
+  // With shuffle on and an empty queue nobody knows the next song yet, so there is nothing to warm up.
+  const following = state?.shuffle ? null : (song ? (library.byId.has(song.id + 1) ? song.id + 1 : library.songs[0]?.id) : null);
+  const nextId = state?.queue[0] ?? following;
   const nextUrl = nextId != null && nextId !== song?.id ? library.byId.get(nextId)?.url : null;
   useEffect(() => {
     if (!nextUrl) return undefined;
@@ -162,6 +165,7 @@ function Player({ room, solo = false, code, subscribe, user, library, playlists,
   const playerRef = useLatest(player);
   const toggle = useCallback(() => {
     const p = playerRef.current;
+    if (p.interrupted) { p.resume(); return; } // pressing play after a call means "carry on", not "pause the room"
     if (p.playing) {
       const audio = audioRef.current;
       const position = audio && audio.readyState >= 1 && !audio.muted ? audio.currentTime : undefined;
@@ -185,6 +189,26 @@ function Player({ room, solo = false, code, subscribe, user, library, playlists,
     playSong(songs[0], songs.map(x => x.id));
     if (!solo) for (const x of songs.slice(1, 100)) send({ type: 'QUEUE_ADD', songId: x.id });
   };
+  const shuffled = (songs) => {
+    const list = [...songs];
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    return list;
+  };
+  /** Shuffle play of a list. On your own, shuffle stays on for that list; in a room it is queued in random order. */
+  const shuffleAll = (songs) => {
+    if (songs.length === 0) return;
+    const order = shuffled(songs);
+    if (solo) {
+      send({ type: 'SHUFFLE', index: 1 });
+      playSong(order[0], songs.map(x => x.id));
+    } else {
+      playAll(order);
+    }
+  };
+  const toggleShuffle = () => act({ type: 'SHUFFLE', index: state?.shuffle ? 0 : 1 });
   const queueSong = (s) => { if (act({ type: 'QUEUE_ADD', songId: s.id })) toast(`Added "${s.title}" to the queue`); };
 
   // Space toggles playback unless the user is typing or focused on a control.
@@ -227,7 +251,9 @@ function Player({ room, solo = false, code, subscribe, user, library, playlists,
   return (
     <div className="room" data-view={view}>
       <div className="ambient" aria-hidden="true">
-        {song?.thumbnail && <img key={song.thumbnail} src={thumb(song.thumbnail)} alt="" />}
+        <span className="ambient-grid" />
+        <span className="orbit-ring a"><i /></span>
+        <span className="orbit-ring b"><i /></span>
       </div>
       <header className="topbar">
         <Brand compact />
@@ -272,13 +298,13 @@ function Player({ room, solo = false, code, subscribe, user, library, playlists,
 
       <aside className="panel panel-library">
         <Library library={library} playlists={playlists} currentId={state?.songId} playing={player.playing}
-          onPlay={playSong} onPlayAll={playAll} onQueue={queueSong} toast={toast} />
+          onPlay={playSong} onPlayAll={playAll} onShuffleAll={shuffleAll} onQueue={queueSong} toast={toast} />
       </aside>
 
       <main className="panel panel-stage">
         <NowPlaying song={song} state={state} player={player} libraryLoading={library.songs.length === 0}
           others={others} solo={solo} activity={activity} volume={volume} onVolume={setVolume}
-          muted={muted} onMute={() => setMuted(m => !m)}
+          muted={muted} onMute={() => setMuted(m => !m)} shuffle={!!state?.shuffle} onShuffle={toggleShuffle}
           onToggle={toggle} onNext={next} onPrev={prev}
           onSeek={(position) => { if (act({ type: 'SEEK', position })) player.seek(position); }}
           onInvite={solo ? onTogether : () => setInviteOpen(true)} />

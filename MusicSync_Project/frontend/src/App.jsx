@@ -8,7 +8,7 @@ import { useFriends } from './hooks/useFriends';
 import AuthScreen from './components/AuthScreen';
 import { RoomScreen, SoloScreen } from './components/Room';
 import TogetherDialog from './components/TogetherDialog';
-import { Brand, Spinner } from './components/ui';
+import { Brand } from './components/ui';
 
 const codeFromUrl = () => {
   const code = cleanRoomCode(new URLSearchParams(window.location.search).get('room'));
@@ -148,7 +148,7 @@ export default function App() {
               <p className="error" role="alert">{bootError}</p>
               <button className="btn btn-secondary" onClick={() => { setBootError(''); boot(); }}>Try again</button>
             </>
-          ) : <Spinner />}
+          ) : <span className="loadbar" role="status" aria-label="Loading" />}
         </div>
       </div>
     );

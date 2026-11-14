@@ -23,6 +23,8 @@ public class Room {
 
     /** How early, by the room's own clock, a listener may report that the track has finished. */
     static final double END_TOLERANCE_SECONDS = 0.4;
+    /** How long the room waits for slower listeners to reach the end before moving on without them. */
+    static final long END_GRACE_MILLIS = 2500;
 
     private final String code;
     private final String createdBy;
@@ -40,6 +42,9 @@ public class Room {
     private long nextMessageId = 1;
     private long emptySince = System.currentTimeMillis(); // 0 while someone is connected
     private long lead; // how far ahead the command being applied schedules playback
+    private boolean shuffle; // when the queue is empty, the next song is picked at random
+    private final java.util.Set<String> finished = new java.util.HashSet<>(); // sessions whose copy of the track has ended
+    private long finishBy; // when to stop waiting for the rest, 0 while nobody has finished
 
     public Room(String code, String createdBy, SongCatalog catalog) {
         this.code = code;
@@ -52,7 +57,7 @@ public class Room {
     public String getCreatedBy() { return createdBy; }
 
     public synchronized RoomState state() {
-        return new RoomState(songId, position, playing, updatedAt, version, List.copyOf(queue));
+        return new RoomState(songId, position, playing, updatedAt, version, List.copyOf(queue), shuffle);
     }
 
     public synchronized List<String> users() {
@@ -87,6 +92,7 @@ public class Room {
     /** @return the username if that was the user's last connection, otherwise null */
     public synchronized String leave(String sessionId) {
         String username = sessions.remove(sessionId);
+        finished.remove(sessionId);
         if (username != null && sessions.isEmpty()) emptySince = System.currentTimeMillis();
         if (username == null || sessions.containsValue(username)) return null;
         return username;
@@ -117,6 +123,11 @@ public class Room {
      * @return true if the state changed and should be broadcast
      */
     public synchronized boolean apply(RoomCommand cmd) {
+        return apply(cmd, null);
+    }
+
+    /** @param sessionId the connection the command came from; only matters for {@code ENDED} */
+    public synchronized boolean apply(RoomCommand cmd, String sessionId) {
         if (songId == null) songId = catalog.firstId(); // library finished loading after the room was created
         switch (cmd.type()) {
             case "PLAY" -> {
@@ -147,12 +158,25 @@ public class Room {
                 // The reporter sends the track's length. If the room is not there yet, their clock runs
                 // ahead; they will report again, and nobody else's song is cut short.
                 if (cmd.position() != null && playing && livePosition() < cmd.position() - END_TOLERANCE_SECONDS) return false;
+                // A listener who fell behind still has the last moments to hear. Wait until every
+                // listener has finished (they keep reporting), but not for long.
+                if (sessionId != null && sessions.containsKey(sessionId)) {
+                    long now = System.currentTimeMillis();
+                    finished.add(sessionId);
+                    if (finishBy == 0) finishBy = now + END_GRACE_MILLIS;
+                    if (!finished.containsAll(sessions.keySet()) && now < finishBy) return false;
+                }
                 if (!advance()) return false;
             }
             case "PREV" -> {
                 if (songId == null) return false;
                 if (livePosition() > 3) start(songId);
                 else start(catalog.neighbour(songId, -1));
+            }
+            case "SHUFFLE" -> {
+                boolean on = cmd.index() == null ? !shuffle : cmd.index() != 0;
+                if (on == shuffle) return false;
+                shuffle = on;
             }
             case "QUEUE_ADD" -> {
                 if (catalog.byId(cmd.songId()) == null || queue.size() >= MAX_QUEUE) return false;
@@ -174,7 +198,7 @@ public class Room {
                 return false;
             }
         }
-        if (cmd.type().startsWith("QUEUE_") && !cmd.type().equals("QUEUE_PLAY")) {
+        if (cmd.type().equals("SHUFFLE") || (cmd.type().startsWith("QUEUE_") && !cmd.type().equals("QUEUE_PLAY"))) {
             version++; // the queue changed, playback did not: its position and clock stay exactly as they were
         } else {
             touch();
@@ -183,7 +207,7 @@ public class Room {
     }
 
     private boolean advance() {
-        Integer next = queue.isEmpty() ? catalog.neighbour(songId, 1) : queue.remove(0);
+        Integer next = !queue.isEmpty() ? queue.remove(0) : shuffle ? catalog.randomId(songId) : catalog.neighbour(songId, 1);
         if (next == null) return false;
         start(next);
         return true;
@@ -199,6 +223,8 @@ public class Room {
     private void touch() {
         updatedAt = System.currentTimeMillis() + lead;
         lead = 0;
+        finished.clear();
+        finishBy = 0;
         version++;
     }
 

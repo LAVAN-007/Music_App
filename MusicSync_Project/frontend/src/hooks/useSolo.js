@@ -19,7 +19,7 @@ export function useSolo(library) {
   // Start with the first song loaded and paused, like a fresh room.
   const firstId = library.songs[0]?.id;
   const initial = useMemo(() => (firstId == null ? null
-    : { songId: firstId, position: 0, playing: false, updatedAt: serverNow(), version: 1, queue: [] }), [firstId]);
+    : { songId: firstId, position: 0, playing: false, updatedAt: serverNow(), version: 1, queue: [], shuffle: false }), [firstId]);
   const initialRef = useLatest(initial);
   const state = local ?? initial;
 
@@ -34,6 +34,10 @@ export function useSolo(library) {
       const neighbour = (step) => {
         const list = context.current?.includes(prev.songId) ? context.current : songs.map(s => s.id);
         if (list.length === 0) return null;
+        if (prev.shuffle && step > 0 && list.length > 1) {
+          const others = list.filter(id => id !== prev.songId);
+          return others[Math.floor(Math.random() * others.length)];
+        }
         const at = list.indexOf(prev.songId);
         return list[(at + step + list.length) % list.length];
       };
@@ -60,6 +64,10 @@ export function useSolo(library) {
           if (livePosition(prev, now) > 3) return start(prev.songId);
           const before = neighbour(-1);
           return before == null ? prev : start(before);
+        }
+        case 'SHUFFLE': {
+          const on = cmd.index == null ? !prev.shuffle : cmd.index !== 0;
+          return on === !!prev.shuffle ? prev : { ...prev, shuffle: on, version: prev.version + 1 };
         }
         case 'QUEUE_ADD': return byId.has(cmd.songId) && prev.queue.length < 200 ? editQueue([...prev.queue, cmd.songId]) : prev;
         case 'QUEUE_REMOVE': return valid(cmd.index) ? editQueue(prev.queue.filter((_, i) => i !== cmd.index)) : prev;

@@ -58,7 +58,7 @@ public class RoomSocketController {
             return;
         }
 
-        if (room.apply(cmd)) {
+        if (room.apply(cmd, sessionId)) {
             broker.convertAndSend(topic, RoomEvent.state(room.state(), cmd.type(), username));
         }
     }
