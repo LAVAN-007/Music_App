@@ -13,7 +13,20 @@ const CORRECT_UNTIL = 0.015; // ...and stop once it is this small
 const CORRECT_SECONDS = 6; // aim to close the gap in about this long
 const MIN_CORRECTION = 0.02;
 const MAX_CORRECTION = 0.06; // speed change stays small enough not to be heard
-const MAX_SEEK_LEAD = 1.5;
+const MIN_SEEK_LEAD = 0.5; // a jump to audio that is not downloaded yet aims at least this far ahead...
+const MAX_SEEK_LEAD = 4; // ...and at most this far, depending on how slow the connection has been
+const HARD_SEEK_UNBUFFERED = 8; // playing fine but this far behind: jump even though it means buffering
+const STALLED_SEEK_COOLDOWN = 4000;
+const AFTER_STALL_MS = 15000; // just after a buffering gap, a quick jump back into step beats a slow drift
+
+/** True when at least a second of audio from `time` (or everything up to the end) is already downloaded. */
+function isBuffered(audio, time) {
+  const need = Number.isFinite(audio.duration) ? Math.min(time + 1, audio.duration - 0.05) : time + 1;
+  for (let i = 0; i < audio.buffered.length; i++) {
+    if (time >= audio.buffered.start(i) - 0.05 && need <= audio.buffered.end(i)) return true;
+  }
+  return false;
+}
 
 /**
  * Keeps an <audio> element locked to the room's playback state.
@@ -22,8 +35,10 @@ const MAX_SEEK_LEAD = 1.5;
  * error is gone; playback is only interrupted (a seek) for errors of several seconds.
  * A listener who is alone in the room has nobody to match, so their music is left untouched.
  * New songs and seeks are announced slightly before playback resumes, so listeners buffer and begin together.
- * A seek stalls playback while the browser buffers, so we measure how long seeks take on this
- * connection and aim that far ahead.
+ * A listener whose own network falls behind never affects the others. Their catch-up is one clean
+ * step: a jump is instant when the audio there is already downloaded; otherwise we jump a little
+ * ahead of the room (by how long this connection has needed to buffer), wait there in silence and
+ * rejoin exactly when the room arrives.
  *
  * The listener who presses play, pause or a song gets the effect at once (`play`, `pause`,
  * `prepare`) instead of after a round trip to the server; the server's answer then takes over.
@@ -38,6 +53,7 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
   const [failedId, setFailedId] = useState(null); // id of a song that could not be loaded
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [buffering, setBuffering] = useState(false); // waiting for the network mid-song
   const [optimistic, setOptimistic] = useState(null); // { playing, key }: what this listener just asked for
 
   const stateRef = useLatest(state);
@@ -47,7 +63,9 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
   const loadedUrl = useRef(null);
   const sendRef = useLatest(send);
   const endedVersion = useRef(-1);
-  const seekLead = useRef(0);
+  const seekLead = useRef(MIN_SEEK_LEAD);
+  const lastStall = useRef(-AFTER_STALL_MS);
+  const rejoinAt = useRef(0); // while set: paused ahead of the room, buffering until the room gets there
   const seekStarted = useRef(0);
   const lastHardSeek = useRef(-HARD_SEEK_COOLDOWN);
   const correction = useRef(0); // signed speed change in progress, 0 when none
@@ -80,6 +98,7 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
     }
 
     clearTimeout(startTimer.current);
+    if (justChanged || !s.playing) rejoinAt.current = 0;
     const wait = s.updatedAt - serverNow();
     if (s.playing && wait > 0) {
       // Playback is scheduled a moment from now (new song or seek): buffer at the start point, then begin on time.
@@ -100,6 +119,15 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
       return;
     }
 
+    if (rejoinAt.current) {
+      const remaining = rejoinAt.current - now;
+      if (remaining > 0 && audio.paused) {
+        startTimer.current = setTimeout(() => reconcileRef.current?.(false), remaining);
+        return;
+      }
+      rejoinAt.current = 0;
+    }
+
     if (leftAlone) {
       // Nobody to stay in step with: let the music run, whatever the network did to it.
       correction.current = 0;
@@ -109,21 +137,39 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
 
     const error = Math.abs(drift);
     const limit = fromSilence || audio.paused ? HARD_SEEK_FROM_SILENCE
-      : justChanged ? HARD_SEEK_ON_CHANGE : HARD_SEEK_WHILE_PLAYING;
-    const canSeekAgain = justChanged || audio.paused || now - lastHardSeek.current > HARD_SEEK_COOLDOWN;
-    if (error > limit && !audio.seeking && canSeekAgain) {
+      : justChanged || now - lastStall.current < AFTER_STALL_MS ? HARD_SEEK_ON_CHANGE : HARD_SEEK_WHILE_PLAYING;
+    const sinceSeek = now - lastHardSeek.current;
+    const stalled = !audio.paused && audio.readyState < 3; // silent already: out of downloaded audio
+    const ready = isBuffered(audio, target); // a jump there is instant, so it may follow sooner
+    const canSeekAgain = justChanged || audio.paused || sinceSeek > HARD_SEEK_COOLDOWN
+      || ((stalled || ready) && sinceSeek > STALLED_SEEK_COOLDOWN);
+    // Never trade music that is playing for a buffering pause unless we are hopelessly far behind.
+    const worthIt = ready || audio.paused || stalled || error > HARD_SEEK_UNBUFFERED;
+    if (error > limit && !audio.seeking && canSeekAgain && worthIt) {
       lastHardSeek.current = now;
-      seekStarted.current = audio.paused ? 0 : now;
       correction.current = 0;
       audio.playbackRate = 1;
-      audio.currentTime = Math.max(0, target + (audio.paused ? 0 : seekLead.current));
+      if (ready || audio.paused) {
+        seekStarted.current = 0;
+        audio.currentTime = Math.max(0, target);
+      } else {
+        // Not downloaded yet: go a little ahead of the room, buffer there, and rejoin when it arrives.
+        const lead = seekLead.current;
+        seekStarted.current = now;
+        rejoinAt.current = now + lead * 1000;
+        audio.pause();
+        audio.currentTime = Math.max(0, target + lead);
+        startTimer.current = setTimeout(() => reconcileRef.current?.(false), lead * 1000);
+        return;
+      }
     } else {
       // Pick one speed and hold it until the gap is closed, instead of changing speed every tick.
       if (correction.current && (error < CORRECT_UNTIL || Math.sign(drift) !== Math.sign(correction.current))) {
         correction.current = 0;
       }
-      if (!correction.current && error > CORRECT_ABOVE) {
-        const amount = Math.max(MIN_CORRECTION, Math.min(MAX_CORRECTION, error / CORRECT_SECONDS));
+      const amount = Math.max(MIN_CORRECTION, Math.min(MAX_CORRECTION, error / CORRECT_SECONDS));
+      // Keep the chosen speed, unless the gap has grown well beyond what it can close.
+      if ((!correction.current && error > CORRECT_ABOVE) || (correction.current && amount > Math.abs(correction.current) + 0.015)) {
         correction.current = Math.sign(drift) * amount;
       }
       const rate = 1 - correction.current;
@@ -234,22 +280,26 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
     const audio = audioRef.current;
     if (!audio) return undefined;
     const onMeta = () => { setDuration(audio.duration || 0); reconcile(true); };
-    const onCanPlay = () => reconcile(false);
+    const onCanPlay = () => { setBuffering(false); reconcile(false); };
     const onTime = () => setTime(audio.currentTime);
-    const onPlaying = () => {
-      setBlocked(false);
+    const onPlaying = () => { setBlocked(false); setBuffering(false); };
+    const onWaiting = () => { lastStall.current = performance.now(); setBuffering(true); };
+    const onSeeked = () => {
+      setTime(audio.currentTime);
       if (seekStarted.current) {
+        // How long this connection needed to fetch audio at a new position; the next such jump aims that far ahead.
         const cost = (performance.now() - seekStarted.current) / 1000;
-        seekLead.current = Math.min(MAX_SEEK_LEAD, seekLead.current * 0.5 + cost * 0.5);
+        seekLead.current = Math.max(MIN_SEEK_LEAD, Math.min(MAX_SEEK_LEAD, seekLead.current * 0.4 + cost * 1.25 * 0.6));
         seekStarted.current = 0;
       }
     };
     const onError = () => { if (audio.currentSrc) setFailedId(stateRef.current?.songId ?? null); };
-    const onEmptied = () => { setTime(0); setDuration(0); };
+    const onEmptied = () => { setTime(0); setDuration(0); setBuffering(false); };
     audio.addEventListener('loadedmetadata', onMeta);
     audio.addEventListener('canplay', onCanPlay);
     audio.addEventListener('timeupdate', onTime);
-    audio.addEventListener('seeked', onTime);
+    audio.addEventListener('seeked', onSeeked);
+    audio.addEventListener('waiting', onWaiting);
     audio.addEventListener('playing', onPlaying);
     audio.addEventListener('ended', reportEnded);
     audio.addEventListener('error', onError);
@@ -258,7 +308,8 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
       audio.removeEventListener('loadedmetadata', onMeta);
       audio.removeEventListener('canplay', onCanPlay);
       audio.removeEventListener('timeupdate', onTime);
-      audio.removeEventListener('seeked', onTime);
+      audio.removeEventListener('seeked', onSeeked);
+      audio.removeEventListener('waiting', onWaiting);
       audio.removeEventListener('playing', onPlaying);
       audio.removeEventListener('ended', reportEnded);
       audio.removeEventListener('error', onError);
@@ -274,5 +325,5 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
   }, [audioRef, reconcile]);
 
   const playing = optimistic && optimistic.key === playbackKey(state) ? optimistic.playing : !!state?.playing;
-  return { blocked, failed: !!song && failedId === song.id, time, duration, playing, unblock, play, pause, seek, prepare };
+  return { blocked, failed: !!song && failedId === song.id, buffering: buffering && playing && !blocked, time, duration, playing, unblock, play, pause, seek, prepare };
 }

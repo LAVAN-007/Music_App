@@ -57,7 +57,8 @@ export default function NowPlaying({ song, state, player, libraryLoading, others
           <p className="now-tag"><CategoryTag name={song.category} color={categoryColor(song.category)} /></p>
         )}
         <p className="now-activity" aria-live="polite">
-          {player.failed ? "This track couldn't be loaded. Try skipping to the next one." : activity || ' '}
+          {player.failed ? "This track couldn't be loaded. Try skipping to the next one."
+            : player.buffering ? 'Slow connection — catching up with the room…' : activity || ' '}
         </p>
       </div>
 
