@@ -29,14 +29,16 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, { method = 'GET', body } = {}, token) {
+/** @param raw a Blob sent as the request body as it is (for pictures) instead of JSON */
+async function request(path, { method = 'GET', body, raw } = {}, token) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  if (body !== undefined) headers['Content-Type'] = 'application/json';
+  if (raw) headers['Content-Type'] = raw.type || 'application/octet-stream';
+  else if (body !== undefined) headers['Content-Type'] = 'application/json';
 
   let res;
   try {
-    res = await fetch(`/api${path}`, { method, headers, body: body !== undefined ? JSON.stringify(body) : undefined });
+    res = await fetch(`/api${path}`, { method, headers, body: raw || (body !== undefined ? JSON.stringify(body) : undefined) });
   } catch {
     throw new ApiError(0, "Can't reach the server. Check your connection and try again.");
   }

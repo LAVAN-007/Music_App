@@ -3,7 +3,7 @@ import { formatTime } from '../lib/util';
 import { categoryColor } from '../lib/categories';
 import { Artwork, CategoryTag, Icon, Spinner } from './ui';
 
-export default function NowPlaying({ song, state, player, libraryLoading, others, solo, activity, volume, onVolume, muted, onMute, shuffle, onShuffle,
+export default function NowPlaying({ song, state, player, libraryLoading, others, solo, activity, muted, onMute, shuffle, onShuffle,
   onToggle, onNext, onPrev, onSeek, onInvite }) {
   const [dragValue, setDragValue] = useState(null); // where the thumb is while this listener is moving it
   const [held, setHeld] = useState(null); // the position just chosen, shown until the audio gets there
@@ -124,11 +124,6 @@ export default function NowPlaying({ song, state, player, libraryLoading, others
         </button>
       </div>
 
-      <div className="volume">
-        <span className="volume-label" title="Volume only changes on your device">Volume</span>
-        <input type="range" className="range thin" aria-label="Volume" min={0} max={1} step={0.01} value={volume}
-          style={{ '--fill': `${volume * 100}%` }} onChange={e => onVolume(parseFloat(e.target.value))} />
-      </div>
     </div>
   );
 }

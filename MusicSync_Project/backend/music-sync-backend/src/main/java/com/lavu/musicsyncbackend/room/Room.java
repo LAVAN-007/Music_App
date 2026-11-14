@@ -16,6 +16,7 @@ public class Room {
     static final int MAX_QUEUE = 200;
     static final int MAX_MESSAGES = 100;
     static final int MAX_CHAT_LENGTH = 500;
+    static final int MAX_REPLY_SNIPPET = 140;
     /** A new song starts this far in the future, so every listener can load it and begin together at 0:00. */
     static final long START_LEAD_MILLIS = 1000;
     /** A seek during playback resumes this far in the future, for the same reason. */
@@ -111,7 +112,25 @@ public class Room {
     }
 
     public synchronized ChatMessage addMessage(String username, String text, boolean system) {
-        ChatMessage message = new ChatMessage(nextMessageId++, username, text, System.currentTimeMillis(), system);
+        return addMessage(username, text, system, null, null);
+    }
+
+    /**
+     * @param image   id of an uploaded picture, or null
+     * @param replyTo id of the message being answered, or null; ignored if that message is no longer kept
+     */
+    public synchronized ChatMessage addMessage(String username, String text, boolean system, String image, Long replyTo) {
+        ChatMessage.Reply reply = null;
+        if (replyTo != null) {
+            for (ChatMessage m : messages) {
+                if (m.id() == replyTo && !m.system()) {
+                    String snippet = m.text().length() > MAX_REPLY_SNIPPET ? m.text().substring(0, MAX_REPLY_SNIPPET) + "…" : m.text();
+                    reply = new ChatMessage.Reply(m.id(), m.username(), snippet, m.image() != null);
+                    break;
+                }
+            }
+        }
+        ChatMessage message = new ChatMessage(nextMessageId++, username, text, System.currentTimeMillis(), system, image, reply);
         messages.addLast(message);
         while (messages.size() > MAX_MESSAGES) messages.removeFirst();
         return message;

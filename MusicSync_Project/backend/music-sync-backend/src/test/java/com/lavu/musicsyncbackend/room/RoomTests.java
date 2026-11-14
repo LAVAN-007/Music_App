@@ -23,7 +23,7 @@ class RoomTests {
     }
 
     private static RoomCommand cmd(String type, Integer songId, Double position, Integer index, Long version) {
-        return new RoomCommand(type, songId, position, index, null, version);
+        return new RoomCommand(type, songId, position, index, null, version, null, null);
     }
 
     @Test
@@ -144,6 +144,26 @@ class RoomTests {
         assertTrue(seen.size() > 3, "songs are picked from across the library: " + seen);
         assertTrue(room.apply(cmd("SHUFFLE", null, null, 0, null)));
         assertFalse(room.state().shuffle());
+    }
+
+    @Test
+    void chatRepliesQuoteTheOriginalAndPicturesAreCheckedByContent() {
+        ChatMessage first = room.addMessage("Asha", "x".repeat(300), false);
+        ChatMessage photo = room.addMessage("Bala", "", false, "img-1", first.id());
+        assertEquals("Asha", photo.reply().username());
+        assertEquals(Room.MAX_REPLY_SNIPPET + 1, photo.reply().text().length(), "the quoted text is shortened");
+        assertEquals("img-1", photo.image());
+
+        ChatMessage answer = room.addMessage("Asha", "nice", false, null, photo.id());
+        assertTrue(answer.reply().image(), "a reply to a picture says so");
+        assertNull(room.addMessage("Asha", "lost", false, null, 9999L).reply(), "replying to a message that is gone is just a message");
+
+        MediaStore store = new MediaStore();
+        assertNull(store.put("ROOM01", "<script>alert(1)</script>".getBytes()), "not a picture");
+        String id = store.put("ROOM01", new byte[]{(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10, 0, 0, 0, 13, 'I', 'H', 'D', 'R'});
+        assertEquals("image/png", store.get(id).type());
+        assertTrue(store.belongsTo(id, "ROOM01"));
+        assertFalse(store.belongsTo(id, "ROOM02"), "a picture can only be posted in the room it was uploaded to");
     }
 
     @Test

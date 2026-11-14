@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import { Avatar, Icon, Spinner } from './ui';
 
 /** Friends list, friend requests and a search to add people by username. */
-export default function FriendsPanel({ friends, currentRoom, onJoin, toast }) {
+export default function FriendsPanel({ friends, currentRoom, onJoin, onInvite, toast }) {
+  const [invited, setInvited] = useState(() => new Set()); // friends invited from this screen
+  const invite = async (name) => {
+    setInvited(prev => new Set(prev).add(name));
+    await onInvite(name);
+  };
   const [query, setQuery] = useState('');
   const [found, setFound] = useState(null); // null: not searched
   const [searching, setSearching] = useState(false);
@@ -113,6 +118,12 @@ export default function FriendsPanel({ friends, currentRoom, onJoin, toast }) {
                   <span>{f.room ? (f.room === currentRoom ? 'In this room with you' : 'Listening in a room') : f.online ? 'Online' : 'Offline'}</span></span>
                 {f.room && f.room !== currentRoom && (
                   <button className="btn btn-primary btn-small" onClick={() => onJoin(f.room)}>Join</button>
+                )}
+                {(!f.room || f.room !== currentRoom) && (
+                  <button className="btn btn-secondary btn-small" onClick={() => invite(f.username)} disabled={invited.has(f.username)}
+                    aria-label={`Invite ${f.username} to listen with you`}>
+                    {invited.has(f.username) ? 'Invited' : 'Invite'}
+                  </button>
                 )}
                 <button className="icon-btn small" disabled={busy === f.username} onClick={() => remove(f.username)}
                   aria-label={`Remove ${f.username} from friends`} title="Remove friend">

@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import { copyText, inviteLink } from '../lib/util';
 import { Avatar, Icon } from './ui';
 
-export default function InviteDialog({ code, users, me, onClose }) {
+export default function InviteDialog({ code, users, me, friends = [], onInviteFriend, onClose }) {
+  const [invited, setInvited] = useState(() => new Set());
+  const outside = friends.filter(f => !users.includes(f.username));
+  const invite = (name) => { setInvited(prev => new Set(prev).add(name)); onInviteFriend(name); };
   const [copied, setCopied] = useState('');
   const closeRef = useRef(null);
   const link = inviteLink(code);
@@ -48,6 +51,23 @@ export default function InviteDialog({ code, users, me, onClose }) {
         </div>
         {typeof navigator.share === 'function' && (
           <button className="btn btn-secondary btn-block" onClick={share}><Icon name="share" size={16} /> Share…</button>
+        )}
+
+        {outside.length > 0 && (
+          <>
+            <h3 className="section-label">Invite your friends</h3>
+            <ul className="people">
+              {outside.map(f => (
+                <li key={f.username}>
+                  <Avatar name={f.username} size={30} />
+                  <span className="people-name">{f.username}<small>{f.online ? 'Online' : 'Offline'}</small></span>
+                  <button className="btn btn-secondary btn-small" onClick={() => invite(f.username)} disabled={invited.has(f.username)}>
+                    {invited.has(f.username) ? 'Invited' : 'Invite'}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
 
         <h3 className="section-label">In this room · {users.length}</h3>

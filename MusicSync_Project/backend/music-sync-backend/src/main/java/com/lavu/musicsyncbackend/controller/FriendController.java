@@ -27,7 +27,10 @@ public class FriendController {
     private static final int MAX_FRIENDS = 300;
 
     public record Friend(String username, boolean online, String room) {}
-    public record Overview(List<Friend> friends, List<String> incoming, List<String> outgoing) {}
+    /** A friend asking you to come and listen in their room. */
+    public record Invite(String from, String room, long at) {}
+    public record Overview(List<Friend> friends, List<String> incoming, List<String> outgoing, List<Invite> invites) {}
+    public record InviteRequest(String username, String room) {}
     public record Found(String username, String relation) {}
     public record Target(String username) {}
 
@@ -35,6 +38,9 @@ public class FriendController {
     private final UserRepository users;
     private final Presence presence;
     private final RoomService rooms;
+    // Invitations live as long as rooms do: in memory. Receiver's user id -> inviter's name -> invitation.
+    private final Map<Long, Map<String, Invite>> invites = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long INVITE_TTL_MS = 10 * 60 * 1000;
 
     public FriendController(FriendshipRepository friendships, UserRepository users, Presence presence, RoomService rooms) {
         this.friendships = friendships;
@@ -70,7 +76,7 @@ public class FriendController {
             int rank = Integer.compare(rank(a), rank(b));
             return rank != 0 ? rank : a.username().compareToIgnoreCase(b.username());
         });
-        return new Overview(friends, incoming, outgoing);
+        return new Overview(friends, incoming, outgoing, invitesFor(me));
     }
 
     @GetMapping("/search")
@@ -119,6 +125,37 @@ public class FriendController {
         request.setAccepted(true);
         friendships.save(request);
         return Map.of("status", "friend");
+    }
+
+    /** Invites a friend to the room you are listening in. They see it the next time their app checks in. */
+    @PostMapping("/invite")
+    public Map<String, Boolean> invite(@RequestBody InviteRequest body, @RequestAttribute(AuthInterceptor.USER_ATTR) AuthUser me) {
+        User other = find(new Target(body == null ? null : body.username()), me);
+        boolean friends = friendships.findByRequesterIdAndAddresseeId(me.id(), other.getId()).filter(Friendship::isAccepted).isPresent()
+                || friendships.findByRequesterIdAndAddresseeId(other.getId(), me.id()).filter(Friendship::isAccepted).isPresent();
+        if (!friends) throw new ApiException(HttpStatus.FORBIDDEN, "You can only invite your friends");
+        com.lavu.musicsyncbackend.room.Room room = rooms.get(body.room());
+        if (room == null) throw new ApiException(HttpStatus.NOT_FOUND, "That room doesn't exist or has ended");
+        invites.computeIfAbsent(other.getId(), k -> new java.util.concurrent.ConcurrentHashMap<>())
+                .put(me.username(), new Invite(me.username(), room.getCode(), System.currentTimeMillis()));
+        return Map.of("ok", true);
+    }
+
+    /** Declines (or clears, after joining) the invitation from that friend. */
+    @PostMapping("/invite/dismiss")
+    public Map<String, Boolean> dismissInvite(@RequestBody Target body, @RequestAttribute(AuthInterceptor.USER_ATTR) AuthUser me) {
+        Map<String, Invite> mine = invites.get(me.id());
+        if (mine != null && body != null && body.username() != null) mine.remove(body.username());
+        return Map.of("ok", true);
+    }
+
+    /** Invitations that are still worth showing: recent, and the room is still there. */
+    private List<Invite> invitesFor(AuthUser me) {
+        Map<String, Invite> mine = invites.get(me.id());
+        if (mine == null) return List.of();
+        long cutoff = System.currentTimeMillis() - INVITE_TTL_MS;
+        mine.values().removeIf(invite -> invite.at() < cutoff || rooms.get(invite.room()) == null);
+        return mine.values().stream().sorted((a, b) -> Long.compare(b.at(), a.at())).toList();
     }
 
     /** Removes a friend, declines a request or cancels one you sent. */

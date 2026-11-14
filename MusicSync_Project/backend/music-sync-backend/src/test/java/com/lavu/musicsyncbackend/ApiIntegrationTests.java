@@ -105,6 +105,24 @@ class ApiIntegrationTests {
                 .andExpect(jsonPath("$.friends[0].username").value("Chitra")).andExpect(jsonPath("$.friends[0].online").value(true))
                 .andExpect(jsonPath("$.outgoing", hasSize(0)));
 
+        // Dev invites Chitra to a room; she sees it, and it goes away once dismissed.
+        String roomBody = mvc.perform(post("/api/rooms").header("Authorization", dev)).andReturn().getResponse().getContentAsString();
+        String roomCode = roomBody.replaceAll(".*\"code\":\"([^\"]+)\".*", "$1");
+        mvc.perform(post("/api/friends/invite").header("Authorization", dev).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"Chitra\",\"room\":\"" + roomCode + "\"}")).andExpect(status().isOk());
+        mvc.perform(post("/api/friends/invite").header("Authorization", dev).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"Chitra\",\"room\":\"ZZZZZZ\"}")).andExpect(status().isNotFound());
+        mvc.perform(get("/api/friends").header("Authorization", chitra))
+                .andExpect(jsonPath("$.invites", hasSize(1))).andExpect(jsonPath("$.invites[0].from").value("Dev"))
+                .andExpect(jsonPath("$.invites[0].room").value(roomCode));
+        mvc.perform(get("/api/friends").header("Authorization", dev)).andExpect(jsonPath("$.invites", hasSize(0)));
+        mvc.perform(post("/api/friends/invite/dismiss").header("Authorization", chitra).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"Dev\"}")).andExpect(status().isOk());
+        mvc.perform(get("/api/friends").header("Authorization", chitra)).andExpect(jsonPath("$.invites", hasSize(0)));
+        String stranger = "Bearer " + register("Gita", "secret1");
+        mvc.perform(post("/api/friends/invite").header("Authorization", stranger).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"username\":\"Chitra\",\"room\":\"" + roomCode + "\"}")).andExpect(status().isForbidden());
+
         mvc.perform(post("/api/friends/remove").header("Authorization", chitra).contentType(MediaType.APPLICATION_JSON).content("{\"username\":\"Dev\"}"))
                 .andExpect(status().isOk());
         mvc.perform(get("/api/friends").header("Authorization", dev)).andExpect(jsonPath("$.friends", hasSize(0)));

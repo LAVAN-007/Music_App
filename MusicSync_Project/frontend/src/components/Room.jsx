@@ -14,7 +14,6 @@ import QueuePanel from './QueuePanel';
 import ChatPanel from './ChatPanel';
 import InviteDialog from './InviteDialog';
 
-const VOLUME_KEY = 'musicsync.volume';
 const MUTED_KEY = 'musicsync.muted';
 const MOBILE = '(max-width: 900px)';
 
@@ -84,7 +83,7 @@ export function SoloScreen({ library, carryRef, ...rest }) {
 }
 
 function Player({ room, solo = false, code, subscribe, user, library, playlists, friends, toast,
-  onLeave, onTogether, onJoinFriend, onSignOut }) {
+  onLeave, onTogether, onJoinFriend, onInviteFriend, onSignOut }) {
   const audioRef = useRef(null);
   const [view, setView] = useState('player'); // which panel a phone shows: player | library | side
   const [sideTab, setSideTab] = useState('queue'); // queue | chat | friends
@@ -92,10 +91,6 @@ function Player({ room, solo = false, code, subscribe, user, library, playlists,
   const [unread, setUnread] = useState(0);
   const [activity, setActivity] = useState('');
   const [isMobile, setIsMobile] = useState(() => window.matchMedia(MOBILE).matches);
-  const [volume, setVolume] = useState(() => {
-    const saved = parseFloat(localStorage.getItem(VOLUME_KEY));
-    return Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : 0.8;
-  });
   // Muting is personal: it silences this device only and is never sent to the room.
   const [muted, setMuted] = useState(() => localStorage.getItem(MUTED_KEY) === '1');
 
@@ -146,10 +141,6 @@ function Player({ room, solo = false, code, subscribe, user, library, playlists,
     return () => mq.removeEventListener('change', onChange);
   }, []);
 
-  useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
-    try { localStorage.setItem(VOLUME_KEY, String(volume)); } catch { /* ignore */ }
-  }, [volume]);
   useEffect(() => {
     try { localStorage.setItem(MUTED_KEY, muted ? '1' : '0'); } catch { /* ignore */ }
   }, [muted]);
@@ -303,7 +294,7 @@ function Player({ room, solo = false, code, subscribe, user, library, playlists,
 
       <main className="panel panel-stage">
         <NowPlaying song={song} state={state} player={player} libraryLoading={library.songs.length === 0}
-          others={others} solo={solo} activity={activity} volume={volume} onVolume={setVolume}
+          others={others} solo={solo} activity={activity}
           muted={muted} onMute={() => setMuted(m => !m)} shuffle={!!state?.shuffle} onShuffle={toggleShuffle}
           onToggle={toggle} onNext={next} onPrev={prev}
           onSeek={(position) => { if (act({ type: 'SEEK', position })) player.seek(position); }}
@@ -328,10 +319,10 @@ function Player({ room, solo = false, code, subscribe, user, library, playlists,
           </button>
         </div>
         {sideTab === 'friends' ? (
-          <FriendsPanel friends={friends} currentRoom={code} onJoin={onJoinFriend} toast={toast} />
+          <FriendsPanel friends={friends} currentRoom={code} onJoin={onJoinFriend} onInvite={onInviteFriend} toast={toast} />
         ) : sideTab === 'chat' && !solo ? (
-          <ChatPanel messages={room.messages} me={user} disabled={!online}
-            onSend={(text) => act({ type: 'CHAT', text })} />
+          <ChatPanel code={code} messages={room.messages} me={user} disabled={!online} toast={toast}
+            onSend={(message) => act({ type: 'CHAT', ...message })} />
         ) : (
           <QueuePanel queue={state?.queue || []} current={song} byId={library.byId} solo={solo}
             onPlay={(index) => act({ type: 'QUEUE_PLAY', index })}
@@ -363,7 +354,10 @@ function Player({ room, solo = false, code, subscribe, user, library, playlists,
       </nav>
 
       <audio ref={audioRef} preload="auto" />
-      {inviteOpen && !solo && <InviteDialog code={code} users={room.users} me={user} onClose={() => setInviteOpen(false)} />}
+      {inviteOpen && !solo && (
+        <InviteDialog code={code} users={room.users} me={user} friends={friends.friends} onInviteFriend={onInviteFriend}
+          onClose={() => setInviteOpen(false)} />
+      )}
     </div>
   );
 }

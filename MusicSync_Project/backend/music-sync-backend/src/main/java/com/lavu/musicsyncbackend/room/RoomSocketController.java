@@ -20,9 +20,12 @@ public class RoomSocketController {
     private final RoomService rooms;
     private final Map<String, String> sessionRoom = new ConcurrentHashMap<>(); // ws session id -> room code
 
-    public RoomSocketController(SimpMessagingTemplate broker, RoomService rooms) {
+    private final MediaStore media;
+
+    public RoomSocketController(SimpMessagingTemplate broker, RoomService rooms, MediaStore media) {
         this.broker = broker;
         this.rooms = rooms;
+        this.media = media;
     }
 
     @MessageMapping("/room/{code}")
@@ -52,9 +55,11 @@ public class RoomSocketController {
 
         if ("CHAT".equals(cmd.type())) {
             String text = cmd.text() == null ? "" : cmd.text().strip();
-            if (text.isEmpty()) return;
+            // A picture must have been uploaded to this very room; anything else is dropped.
+            String image = media.belongsTo(cmd.image(), room.getCode()) ? cmd.image() : null;
+            if (text.isEmpty() && image == null) return;
             if (text.length() > Room.MAX_CHAT_LENGTH) text = text.substring(0, Room.MAX_CHAT_LENGTH);
-            broker.convertAndSend(topic, RoomEvent.chat(room.addMessage(username, text, false)));
+            broker.convertAndSend(topic, RoomEvent.chat(room.addMessage(username, text, false, image, cmd.replyTo())));
             return;
         }
 

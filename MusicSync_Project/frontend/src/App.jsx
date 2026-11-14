@@ -8,7 +8,7 @@ import { useFriends } from './hooks/useFriends';
 import AuthScreen from './components/AuthScreen';
 import { RoomScreen, SoloScreen } from './components/Room';
 import TogetherDialog from './components/TogetherDialog';
-import { Brand } from './components/ui';
+import { Avatar, Brand } from './components/ui';
 
 const codeFromUrl = () => {
   const code = cleanRoomCode(new URLSearchParams(window.location.search).get('room'));
@@ -52,7 +52,7 @@ export default function App() {
   const friends = useFriends(home, onUnauthorized, (name) => {
     toast(`${name} sent you a friend request`);
     playMessageSound();
-  });
+  }, () => playMessageSound());
 
   /** Enters a room after confirming it exists. Throws ApiError for the caller to display. */
   const enterRoom = useCallback(async (code, carry = null) => {
@@ -129,6 +129,28 @@ export default function App() {
     }
   }, [enterRoom, onUnauthorized, toast]);
 
+  /** Invites a friend to listen. From the solo player this first starts a room with the current song. */
+  const inviteFriend = async (name) => {
+    try {
+      let code = roomCode;
+      if (!code) {
+        const info = await api('/rooms', { method: 'POST' });
+        code = info.code;
+        await enterRoom(code, carryRef.current?.());
+      }
+      await friends.invite(name, code);
+      toast(`Invited ${name} to listen with you`);
+    } catch (e) {
+      if (e.status === 401) onUnauthorized();
+      else toast(e.message, 'error');
+    }
+  };
+
+  const acceptInvite = (invite) => {
+    friends.dismissInvite(invite.from);
+    joinFriend(invite.room);
+  };
+
   const signOut = async () => {
     await endSession();
     setUrlRoom('');
@@ -136,6 +158,9 @@ export default function App() {
   };
 
   const carryRef = useRef(null); // filled by the solo player: () => what is playing now
+
+  // The newest invitation to a room other than the one this user is already in.
+  const pendingInvite = friends.invites.find(invite => invite.room !== roomCode);
 
   let screen;
   if (phase === 'boot') {
@@ -155,7 +180,7 @@ export default function App() {
   } else if (phase === 'auth') {
     screen = <AuthScreen inviteCode={invite} onSignedIn={onSignedIn} />;
   } else {
-    const shared = { user, library, playlists, friends, toast, onJoinFriend: joinFriend, onSignOut: signOut };
+    const shared = { user, library, playlists, friends, toast, onJoinFriend: joinFriend, onInviteFriend: inviteFriend, onSignOut: signOut };
     screen = roomCode ? (
       <RoomScreen key={roomCode} code={roomCode} seed={seed} {...shared}
         onLeave={leaveRoom} onGone={roomGone} onUnauthorized={onUnauthorized} />
@@ -170,6 +195,17 @@ export default function App() {
       {togetherOpen && home && (
         <TogetherDialog onCreate={() => createRoom(carryRef.current?.())} onJoin={enterRoom}
           onClose={() => setTogetherOpen(false)} />
+      )}
+      {home && pendingInvite && (
+        <div className="invite-card" role="alertdialog" aria-label={`${pendingInvite.from} invited you to listen together`}>
+          <Avatar name={pendingInvite.from} size={40} />
+          <div className="invite-card-text">
+            <strong>{pendingInvite.from}</strong>
+            <span>invited you to listen together</span>
+          </div>
+          <button className="btn btn-primary btn-small" onClick={() => acceptInvite(pendingInvite)}>Join</button>
+          <button className="btn btn-ghost btn-small" onClick={() => friends.dismissInvite(pendingInvite.from)}>Not now</button>
+        </div>
       )}
       <div className="toasts" aria-live="polite">
         {toasts.map(t => <div key={t.id} className={`toast ${t.kind}`}>{t.text}</div>)}
