@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRoom } from '../hooks/useRoom';
+import { useSolo } from '../hooks/useSolo';
+import { playMessageSound } from '../lib/sound';
+import FriendsPanel from './FriendsPanel';
 import { usePlayer } from '../hooks/usePlayer';
 import { useLatest } from '../hooks/useLatest';
 import { formatTime, thumb } from '../lib/util';
+import { serverNow } from '../lib/clock';
 import { Avatar, Brand, Icon } from './ui';
 import Library from './Library';
 import NowPlaying from './NowPlaying';
@@ -11,6 +15,7 @@ import ChatPanel from './ChatPanel';
 import InviteDialog from './InviteDialog';
 
 const VOLUME_KEY = 'musicsync.volume';
+const MUTED_KEY = 'musicsync.muted';
 const MOBILE = '(max-width: 900px)';
 
 function describe(event, me, byId) {
@@ -32,10 +37,56 @@ function describe(event, me, byId) {
   }
 }
 
-export default function Room({ code, user, library, onLeave, onGone, onUnauthorized, toast }) {
+/** A shared room: playback state comes from the server and everyone in the room hears the same thing. */
+export function RoomScreen({ code, seed, onGone, onUnauthorized, ...rest }) {
+  const events = useRef({}); // the player below says what to do with chat and activity
+  const subscribe = useCallback((handlers) => {
+    events.current = handlers;
+    return () => { events.current = {}; };
+  }, []);
+  const room = useRoom(code, {
+    onGone,
+    onUnauthorized,
+    onChat: (message) => events.current.onChat?.(message),
+    onActivity: (event) => events.current.onActivity?.(event),
+  });
+
+  // Started from the solo player: carry on with the song that was playing there.
+  const seeded = useRef(!seed);
+  const { status, send } = room;
+  useEffect(() => {
+    if (seeded.current || status !== 'connected') return;
+    seeded.current = true;
+    send({ type: 'SELECT', songId: seed.songId });
+    if (seed.position > 2) send({ type: 'SEEK', position: seed.position });
+    if (!seed.playing) send({ type: 'PAUSE' });
+  }, [status, send, seed]);
+
+  return <Player room={room} code={code} subscribe={subscribe} {...rest} />;
+}
+
+/** Listening on your own: no room, no server state. */
+export function SoloScreen({ library, carryRef, ...rest }) {
+  const solo = useSolo(library);
+  const stateRef = useLatest(solo.touched ? solo.state : null); // nothing to carry over until something was played
+  useEffect(() => {
+    // Lets "Start a room" pick up what is playing here.
+    carryRef.current = () => {
+      const s = stateRef.current;
+      if (!s) return null;
+      const position = s.playing ? s.position + Math.max(0, serverNow() - s.updatedAt) / 1000 : s.position;
+      return { songId: s.songId, position, playing: s.playing };
+    };
+    return () => { carryRef.current = null; };
+  }, [carryRef, stateRef]);
+  return <Player room={solo} solo library={library} {...rest} />;
+}
+
+function Player({ room, solo = false, code, subscribe, user, library, playlists, friends, toast,
+  onLeave, onTogether, onJoinFriend, onSignOut }) {
   const audioRef = useRef(null);
   const [view, setView] = useState('player'); // which panel a phone shows: player | library | side
-  const [sideTab, setSideTab] = useState('queue'); // queue | chat
+  const [sideTab, setSideTab] = useState('queue'); // queue | chat | friends
   const [inviteOpen, setInviteOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const [activity, setActivity] = useState('');
@@ -44,29 +95,34 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
     const saved = parseFloat(localStorage.getItem(VOLUME_KEY));
     return Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : 0.8;
   });
+  // Muting is personal: it silences this device only and is never sent to the room.
+  const [muted, setMuted] = useState(() => localStorage.getItem(MUTED_KEY) === '1');
 
   const chatVisible = sideTab === 'chat' && (!isMobile || view === 'side');
   const chatVisibleRef = useLatest(chatVisible);
   const byIdRef = useLatest(library.byId);
 
-  const room = useRoom(code, {
-    onGone,
-    onUnauthorized,
-    onChat: (message) => {
-      if (message.system) {
-        if (message.username !== user) toast(message.text);
-      } else if (message.username !== user && !chatVisibleRef.current) {
-        setUnread(n => n + 1);
-      }
-    },
-    onActivity: (event) => {
-      const text = describe(event, user, byIdRef.current);
-      if (text) setActivity(text);
-    },
-  });
+  useEffect(() => {
+    if (!subscribe) return undefined;
+    return subscribe({
+      onChat: (message) => {
+        if (message.system) {
+          if (message.username !== user) toast(message.text);
+        } else if (message.username !== user) {
+          playMessageSound();
+          if (!chatVisibleRef.current) setUnread(n => n + 1);
+        }
+      },
+      onActivity: (event) => {
+        const text = describe(event, user, byIdRef.current);
+        if (text) setActivity(text);
+      },
+    });
+  }, [subscribe, user, toast, chatVisibleRef, byIdRef]);
+
   const { state, send } = room;
   const song = state ? library.byId.get(state.songId) : null;
-  const player = usePlayer(audioRef, state, song, send, room.listeners <= 1);
+  const player = usePlayer(audioRef, state, song, send, solo || room.listeners <= 1, muted);
 
   // Warm up the song that plays next (queue head, else the next one in the library) so it starts on time.
   const nextId = state?.queue[0] ?? (song ? (library.byId.has(song.id + 1) ? song.id + 1 : library.songs[0]?.id) : null);
@@ -91,6 +147,9 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
     if (audioRef.current) audioRef.current.volume = volume;
     try { localStorage.setItem(VOLUME_KEY, String(volume)); } catch { /* ignore */ }
   }, [volume]);
+  useEffect(() => {
+    try { localStorage.setItem(MUTED_KEY, muted ? '1' : '0'); } catch { /* ignore */ }
+  }, [muted]);
 
   /** Sends a command, telling the user when we're offline instead of silently dropping it. */
   const act = useCallback((command) => {
@@ -114,10 +173,17 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
   const next = useCallback(() => act({ type: 'NEXT' }), [act]);
   const prev = useCallback(() => act({ type: 'PREV' }), [act]);
 
-  const playSong = (s) => {
-    if (!act({ type: 'SELECT', songId: s.id })) return;
+  /** @param context ids of the list the song was picked from (a playlist or category); solo playback continues through it */
+  const playSong = (s, context) => {
+    if (!act(solo && context ? { type: 'SELECT', songId: s.id, context } : { type: 'SELECT', songId: s.id })) return;
     player.prepare(s);
     if (isMobile) setView('player');
+  };
+  /** Plays a whole list: on your own it becomes what plays next; in a room the rest is queued for everyone. */
+  const playAll = (songs) => {
+    if (songs.length === 0) return;
+    playSong(songs[0], songs.map(x => x.id));
+    if (!solo) for (const x of songs.slice(1, 100)) send({ type: 'QUEUE_ADD', songId: x.id });
   };
   const queueSong = (s) => { if (act({ type: 'QUEUE_ADD', songId: s.id })) toast(`Added "${s.title}" to the queue`); };
 
@@ -139,14 +205,14 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
     navigator.mediaSession.metadata = new window.MediaMetadata({
       title: song.title,
       artist: song.artist,
-      album: `MusicSync room ${code}`,
+      album: solo ? 'MusicSync' : `MusicSync room ${code}`,
       artwork: song.thumbnail ? [{ src: song.thumbnail, sizes: '500x500' }] : [],
     });
     const handlers = { play: toggle, pause: toggle, nexttrack: next, previoustrack: prev };
     for (const [name, handler] of Object.entries(handlers)) {
       try { navigator.mediaSession.setActionHandler(name, handler); } catch { /* unsupported action */ }
     }
-  }, [song, code, toggle, next, prev]);
+  }, [song, code, solo, toggle, next, prev]);
 
   useEffect(() => {
     document.title = song ? `${song.title} · MusicSync` : 'MusicSync — listen together';
@@ -154,6 +220,7 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
   }, [song]);
 
   const others = room.users.filter(name => name !== user);
+  const requests = friends.incoming.length;
   const showTab = (tab) => { setSideTab(tab); if (tab === 'chat') setUnread(0); };
   const openSide = (tab) => { showTab(tab); setView('side'); };
 
@@ -164,23 +231,37 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
       </div>
       <header className="topbar">
         <Brand compact />
-        <button className="room-pill" onClick={() => setInviteOpen(true)} title="Invite friends">
-          <span className="room-pill-label">Room</span>
-          <span className="room-pill-code">{code}</span>
-          <Icon name="copy" size={14} />
-        </button>
-        <div className="topbar-right">
-          <button className="avatars" onClick={() => setInviteOpen(true)} aria-label={`${room.users.length} in this room`}>
-            {room.users.slice(0, 4).map(name => <Avatar key={name} name={name} size={28} />)}
-            {room.users.length > 4 && <span className="avatar more">+{room.users.length - 4}</span>}
-          </button>
-          <button className="btn btn-primary btn-small" onClick={() => setInviteOpen(true)}>
-            <Icon name="userAdd" size={16} /><span className="hide-mobile">Invite</span>
-          </button>
-          <button className="btn btn-ghost btn-small" onClick={onLeave} title="Leave room">
-            <Icon name="logout" size={16} /><span className="hide-mobile">Leave</span>
-          </button>
-        </div>
+        {solo ? (
+          <div className="topbar-right">
+            <button className="btn btn-primary btn-small" onClick={onTogether}>
+              <Icon name="people" size={16} /><span>Listen together</span>
+            </button>
+            <span className="me" title={`Signed in as ${user}`}><Avatar name={user} size={28} /><span className="hide-mobile">{user}</span></span>
+            <button className="btn btn-ghost btn-small" onClick={onSignOut} title="Sign out">
+              <Icon name="logout" size={16} /><span className="hide-mobile">Sign out</span>
+            </button>
+          </div>
+        ) : (
+          <>
+            <button className="room-pill" onClick={() => setInviteOpen(true)} title="Invite friends">
+              <span className="room-pill-label">Room</span>
+              <span className="room-pill-code">{code}</span>
+              <Icon name="copy" size={14} />
+            </button>
+            <div className="topbar-right">
+              <button className="avatars" onClick={() => setInviteOpen(true)} aria-label={`${room.users.length} in this room`}>
+                {room.users.slice(0, 4).map(name => <Avatar key={name} name={name} size={28} />)}
+                {room.users.length > 4 && <span className="avatar more">+{room.users.length - 4}</span>}
+              </button>
+              <button className="btn btn-primary btn-small" onClick={() => setInviteOpen(true)}>
+                <Icon name="userAdd" size={16} /><span className="hide-mobile">Invite</span>
+              </button>
+              <button className="btn btn-ghost btn-small" onClick={onLeave} title="Leave room">
+                <Icon name="logout" size={16} /><span className="hide-mobile">Leave</span>
+              </button>
+            </div>
+          </>
+        )}
       </header>
 
       {!online && (
@@ -190,37 +271,46 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
       )}
 
       <aside className="panel panel-library">
-        <Library library={library} currentId={state?.songId} playing={player.playing}
-          onPlay={playSong} onQueue={queueSong} />
+        <Library library={library} playlists={playlists} currentId={state?.songId} playing={player.playing}
+          onPlay={playSong} onPlayAll={playAll} onQueue={queueSong} toast={toast} />
       </aside>
 
       <main className="panel panel-stage">
         <NowPlaying song={song} state={state} player={player} libraryLoading={library.songs.length === 0}
-          others={others} activity={activity} volume={volume} onVolume={setVolume}
+          others={others} solo={solo} activity={activity} volume={volume} onVolume={setVolume}
+          muted={muted} onMute={() => setMuted(m => !m)}
           onToggle={toggle} onNext={next} onPrev={prev}
           onSeek={(position) => { if (act({ type: 'SEEK', position })) player.seek(position); }}
-          onInvite={() => setInviteOpen(true)} />
+          onInvite={solo ? onTogether : () => setInviteOpen(true)} />
       </main>
 
       <aside className="panel panel-side">
-        <div className="tabs" role="tablist">
+        <div className={`tabs ${solo ? '' : 'three'}`} role="tablist">
           <button role="tab" aria-selected={sideTab === 'queue'} className={sideTab === 'queue' ? 'active' : ''}
             onClick={() => showTab('queue')}>
             Queue{state?.queue.length ? <span className="count">{state.queue.length}</span> : null}
           </button>
-          <button role="tab" aria-selected={sideTab === 'chat'} className={sideTab === 'chat' ? 'active' : ''}
-            onClick={() => showTab('chat')}>
-            Chat{unread > 0 && !chatVisible ? <span className="count hot">{unread}</span> : null}
+          {!solo && (
+            <button role="tab" aria-selected={sideTab === 'chat'} className={sideTab === 'chat' ? 'active' : ''}
+              onClick={() => showTab('chat')}>
+              Chat{unread > 0 && !chatVisible ? <span className="count hot">{unread}</span> : null}
+            </button>
+          )}
+          <button role="tab" aria-selected={sideTab === 'friends'} className={sideTab === 'friends' ? 'active' : ''}
+            onClick={() => showTab('friends')}>
+            Friends{requests > 0 ? <span className="count hot">{requests}</span> : null}
           </button>
         </div>
-        {sideTab === 'queue' ? (
-          <QueuePanel queue={state?.queue || []} current={song} byId={library.byId}
+        {sideTab === 'friends' ? (
+          <FriendsPanel friends={friends} currentRoom={code} onJoin={onJoinFriend} toast={toast} />
+        ) : sideTab === 'chat' && !solo ? (
+          <ChatPanel messages={room.messages} me={user} disabled={!online}
+            onSend={(text) => act({ type: 'CHAT', text })} />
+        ) : (
+          <QueuePanel queue={state?.queue || []} current={song} byId={library.byId} solo={solo}
             onPlay={(index) => act({ type: 'QUEUE_PLAY', index })}
             onRemove={(index) => act({ type: 'QUEUE_REMOVE', index })}
             onClear={() => act({ type: 'QUEUE_CLEAR' })} />
-        ) : (
-          <ChatPanel messages={room.messages} me={user} disabled={!online}
-            onSend={(text) => act({ type: 'CHAT', text })} />
         )}
       </aside>
 
@@ -234,14 +324,20 @@ export default function Room({ code, user, library, onLeave, onGone, onUnauthori
         <button className={view === 'side' && sideTab === 'queue' ? 'active' : ''} onClick={() => openSide('queue')}>
           <Icon name="queue" size={22} /><span>Queue</span>
         </button>
-        <button className={view === 'side' && sideTab === 'chat' ? 'active' : ''} onClick={() => openSide('chat')}>
-          <Icon name="chat" size={22} /><span>Chat</span>
-          {unread > 0 && !chatVisible && <span className="badge">{unread > 9 ? '9+' : unread}</span>}
+        {!solo && (
+          <button className={view === 'side' && sideTab === 'chat' ? 'active' : ''} onClick={() => openSide('chat')}>
+            <Icon name="chat" size={22} /><span>Chat</span>
+            {unread > 0 && !chatVisible && <span className="badge">{unread > 9 ? '9+' : unread}</span>}
+          </button>
+        )}
+        <button className={view === 'side' && sideTab === 'friends' ? 'active' : ''} onClick={() => openSide('friends')}>
+          <Icon name="people" size={22} /><span>Friends</span>
+          {requests > 0 && <span className="badge">{requests > 9 ? '9+' : requests}</span>}
         </button>
       </nav>
 
       <audio ref={audioRef} preload="auto" />
-      {inviteOpen && <InviteDialog code={code} users={room.users} me={user} onClose={() => setInviteOpen(false)} />}
+      {inviteOpen && !solo && <InviteDialog code={code} users={room.users} me={user} onClose={() => setInviteOpen(false)} />}
     </div>
   );
 }

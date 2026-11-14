@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Client } from '@stomp/stompjs';
 import { api, getToken } from '../lib/api';
-import { syncClock } from '../lib/clock';
+import { keepClockSynced, syncClock } from '../lib/clock';
 import { useLatest } from './useLatest';
 
 /**
@@ -23,7 +23,7 @@ export function useRoom(code, handlers) {
 
   useEffect(() => {
     let closed = false;
-    let refine = 0;
+    const stopClock = keepClockSynced(); // a slow connection needs many measurements to get this right
     const topic = `/topic/room/${code}`;
 
     const onEvent = (event) => {
@@ -51,7 +51,8 @@ export function useRoom(code, handlers) {
       // a flaky network and retry forever. Check the session before every attempt.
       beforeConnect: async () => {
         try {
-          await api('/auth/me');
+          await api('/auth/me'); // also renews an expired access token
+          client.connectHeaders = { Authorization: `Bearer ${getToken() || ''}` };
         } catch (e) {
           if (!closed && e.status === 401) {
             handlersRef.current.onUnauthorized?.();
@@ -60,7 +61,7 @@ export function useRoom(code, handlers) {
         }
       },
       onConnect: async () => {
-        const clock = syncClock(3); // runs alongside the room lookup so joining stays quick
+        const clock = syncClock(3, 2500); // runs alongside the room lookup; a slow link must not hold up joining
         try {
           // Confirms the room still exists (the server may have restarted) and loads chat history.
           const info = await api(`/rooms/${code}`);
@@ -83,8 +84,6 @@ export function useRoom(code, handlers) {
           client.publish({ destination: `/app/room/${code}`, body: JSON.stringify(command) });
         }
         setStatus('connected');
-        // Refine the clock estimate once things are quiet.
-        refine = setTimeout(() => { if (!closed) syncClock(5); }, 5000);
       },
       onWebSocketClose: () => {
         joinedRef.current = false;
@@ -99,7 +98,7 @@ export function useRoom(code, handlers) {
       closed = true;
       joinedRef.current = false;
       queuedRef.current = [];
-      clearTimeout(refine);
+      stopClock();
       clientRef.current = null;
       client.deactivate();
     };

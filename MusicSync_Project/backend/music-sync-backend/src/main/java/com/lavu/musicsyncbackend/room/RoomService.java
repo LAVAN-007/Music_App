@@ -53,6 +53,15 @@ public class RoomService {
         return code == null ? null : rooms.get(normalize(code));
     }
 
+    /** Which room each connected user is in right now: display name -> room code. */
+    public Map<String, String> roomsByUser() {
+        Map<String, String> result = new java.util.HashMap<>();
+        for (Room room : rooms.values()) {
+            for (String name : room.users()) result.put(name, room.getCode());
+        }
+        return result;
+    }
+
     public void cancelRemoval(Room room) {
         ScheduledFuture<?> pending = pendingRemovals.remove(room.getCode());
         if (pending != null) pending.cancel(false);

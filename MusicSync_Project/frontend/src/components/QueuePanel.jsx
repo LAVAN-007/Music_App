@@ -1,7 +1,7 @@
 import { thumb } from '../lib/util';
 import { Artwork, Icon } from './ui';
 
-export default function QueuePanel({ queue, current, byId, onPlay, onRemove, onClear }) {
+export default function QueuePanel({ queue, current, byId, solo, onPlay, onRemove, onClear }) {
   return (
     <div className="queue">
       {current && (
@@ -28,7 +28,7 @@ export default function QueuePanel({ queue, current, byId, onPlay, onRemove, onC
         <div className="empty">
           <Icon name="queue" size={30} />
           <p>The queue is empty</p>
-          <p className="muted small">Tap + on any song to line it up. When the queue runs out, the room keeps playing through the library.</p>
+          <p className="muted small">Tap + on any song to line it up. When the queue runs out, {solo ? 'playback continues through the list you were playing' : 'the room keeps playing through the library'}.</p>
         </div>
       ) : (
         <ul className="song-list flush">

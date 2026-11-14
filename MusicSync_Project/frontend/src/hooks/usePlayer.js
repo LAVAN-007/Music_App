@@ -48,7 +48,7 @@ const OPTIMISTIC_MS = 2500; // how long a local action stands in for the server'
 /** Identifies the playback part of a room state; queue edits leave it unchanged. */
 const playbackKey = (s) => (s ? `${s.songId}|${s.position}|${s.playing}|${s.updatedAt}` : '');
 
-export function usePlayer(audioRef, state, song, send, alone = false) {
+export function usePlayer(audioRef, state, song, send, alone = false, muted = false) {
   const [blocked, setBlocked] = useState(false); // browser refused to autoplay
   const [failedId, setFailedId] = useState(null); // id of a song that could not be loaded
   const [time, setTime] = useState(0);
@@ -63,6 +63,7 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
   const loadedUrl = useRef(null);
   const sendRef = useLatest(send);
   const endedVersion = useRef(-1);
+  const endedAt = useRef(0);
   const seekLead = useRef(MIN_SEEK_LEAD);
   const lastStall = useRef(-AFTER_STALL_MS);
   const rejoinAt = useRef(0); // while set: paused ahead of the room, buffering until the room gets there
@@ -70,14 +71,21 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
   const lastHardSeek = useRef(-HARD_SEEK_COOLDOWN);
   const correction = useRef(0); // signed speed change in progress, 0 when none
   const aloneRef = useLatest(alone);
+  const mutedRef = useLatest(muted); // this listener's own mute; nobody else is affected
   const startTimer = useRef(0);
   const reconcileRef = useRef(null);
 
+  // The server only moves on once the room's own clock reaches the end of the track, so a listener
+  // whose clock is off cannot cut the song short for the others. Until it does, keep reporting.
   const reportEnded = useCallback(() => {
     const s = stateRef.current;
-    if (!s || endedVersion.current === s.version) return;
-    if (sendRef.current({ type: 'ENDED', songId: s.songId, version: s.version })) endedVersion.current = s.version;
-  }, [stateRef, sendRef]);
+    const now = performance.now();
+    if (!s || (endedVersion.current === s.version && now - endedAt.current < 1000)) return;
+    const duration = audioRef.current?.duration;
+    const command = { type: 'ENDED', songId: s.songId, version: s.version };
+    if (Number.isFinite(duration)) command.position = duration;
+    if (sendRef.current(command)) { endedVersion.current = s.version; endedAt.current = now; }
+  }, [audioRef, stateRef, sendRef]);
 
   const reconcile = useCallback((justChanged, fromSilence = false) => {
     const audio = audioRef.current;
@@ -87,13 +95,18 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
       if (pending.current.key === playbackKey(s) && performance.now() < pending.current.until) return;
       pending.current = null;
     }
-    audio.muted = false;
+    audio.muted = mutedRef.current;
     if (!audio.currentSrc || audio.readyState < 1) return;
 
     const target = s.playing ? s.position + (serverNow() - s.updatedAt) / 1000 : s.position;
     const leftAlone = aloneRef.current && !justChanged && !audio.paused;
     if (s.playing && !leftAlone && Number.isFinite(audio.duration) && target >= audio.duration - 0.15) {
       reportEnded(); // we joined (or woke up) after this track should have finished
+      return;
+    }
+
+    if (s.playing && audio.ended && !justChanged) {
+      reportEnded(); // finished here before the room got to the end: wait for it rather than replay the tail
       return;
     }
 
@@ -181,7 +194,7 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
         if (e.name === 'NotAllowedError') setBlocked(true);
       });
     }
-  }, [audioRef, stateRef, aloneRef, reportEnded]);
+  }, [audioRef, stateRef, aloneRef, mutedRef, reportEnded]);
 
   useEffect(() => {
     reconcileRef.current = reconcile;
@@ -224,10 +237,10 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
     const audio = audioRef.current;
     if (!audio) return;
     hold(true);
-    audio.muted = false;
+    audio.muted = mutedRef.current;
     audio.playbackRate = 1;
     audio.play().then(() => setBlocked(false)).catch(() => {});
-  }, [audioRef, hold]);
+  }, [audioRef, hold, mutedRef]);
 
   /** Call after sending PAUSE: stops this listener immediately. */
   const pause = useCallback(() => {
@@ -262,6 +275,11 @@ export function usePlayer(audioRef, state, song, send, alone = false) {
     load(next.url);
     audio.play().then(() => setBlocked(false)).catch(() => {});
   }, [audioRef, hold, load]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio && !pending.current) audio.muted = muted; // while a song is being prepared it stays silent anyway
+  }, [audioRef, muted]);
 
   // Apply every state change immediately, then keep correcting drift.
   // Queue edits also raise the version, but they are not a reason to touch the audio.

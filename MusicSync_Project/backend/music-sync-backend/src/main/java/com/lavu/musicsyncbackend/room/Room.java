@@ -21,6 +21,9 @@ public class Room {
     /** A seek during playback resumes this far in the future, for the same reason. */
     static final long SEEK_LEAD_MILLIS = 600;
 
+    /** How early, by the room's own clock, a listener may report that the track has finished. */
+    static final double END_TOLERANCE_SECONDS = 0.4;
+
     private final String code;
     private final String createdBy;
     private final SongCatalog catalog;
@@ -141,6 +144,9 @@ public class Room {
                 // Every listener reports the end of a track; only the first report for the current one counts.
                 if (songId == null || !songId.equals(cmd.songId())) return false;
                 if (cmd.version() != null && cmd.version() != version) return false;
+                // The reporter sends the track's length. If the room is not there yet, their clock runs
+                // ahead; they will report again, and nobody else's song is cut short.
+                if (cmd.position() != null && playing && livePosition() < cmd.position() - END_TOLERANCE_SECONDS) return false;
                 if (!advance()) return false;
             }
             case "PREV" -> {

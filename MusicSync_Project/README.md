@@ -1,7 +1,8 @@
 # MusicSync
 
-Listen to music together, in sync. Sign in, start a room, share the 6-character code or invite link,
-and everyone in the room hears the same song at the same second. Anyone in the room can play, pause,
+Listen to music on your own or together, in sync. Sign in and play straight away, keep your own
+playlists, add friends, or start a room and share the 6-character code or invite link so everyone in
+the room hears the same song at the same second. Anyone in the room can play, pause,
 seek, skip, queue songs and chat.
 
 ## Requirements
@@ -69,6 +70,7 @@ line as `--name=value`.
 | --- | --- | --- |
 | `server.port` | `8080` | HTTP and WebSocket port |
 | `spring.datasource.url` | `jdbc:h2:file:./data/musicsync` | Accounts and sessions database |
+| `musicsync.jwt.secret` | random per start | Signs login tokens; set `MUSICSYNC_JWT_SECRET` when hosting |
 | `musicsync.catalog.remote` | `true` | `false` runs offline with a few royalty-free demo tracks |
 | `musicsync.catalog.cache-file` | `./data/catalog.json` | Where the song library is cached |
 
@@ -76,9 +78,17 @@ The dev server proxies to `http://localhost:8080`; set `BACKEND_URL` to point it
 
 ## How it works
 
-- **Accounts.** Passwords are stored as BCrypt hashes. Signing in returns a random bearer token; only
-  its SHA-256 is stored, it expires after 30 days, and signing out deletes it. Every `/api` call and
-  every WebSocket connection must present it.
+- **Accounts.** Passwords are stored as BCrypt hashes. Signing in returns a 15-minute access token
+  (a JWT signed with `MUSICSYNC_JWT_SECRET`) and a refresh token; only the refresh token's SHA-256 is
+  stored. The app renews the access token by itself, so a user stays signed in until they sign out or
+  stay away for 30 days. Every `/api` call and every WebSocket connection must present the access token.
+- **Listening alone.** After signing in you land in your own player; no room is needed. "Listen
+  together" starts a room (carrying over the song that is playing) or joins one by code.
+- **Playlists and friends.** Both are stored in the database with the account. A playlist keeps each
+  song's details, so it survives the library being rebuilt. Friends are added by username; the list
+  shows who is online and lets you join a friend's room.
+- **Mute and message sound.** Mute is local to the device and never sent to the room. A short chime
+  plays when someone else sends a chat message or a friend request.
 - **Rooms.** A room lives in server memory and holds the current song, position, play/pause state,
   queue, listeners and the last 100 chat messages. Empty rooms are kept for 30 minutes, then removed.
   Restarting the server ends all rooms.

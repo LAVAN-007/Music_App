@@ -61,6 +61,8 @@ public class SongCatalog {
     // Song ids are 1-based positions in this list, so lookups are index reads.
     private volatile List<Song> songs = List.of();
     private volatile boolean loading = true;
+    private volatile Map<String, Integer> urlIndex = Map.of();
+    private volatile List<Song> indexedList;
 
     public SongCatalog(ObjectMapper mapper,
                        @Value("${musicsync.catalog.remote:true}") boolean remote,
@@ -112,6 +114,19 @@ public class SongCatalog {
         List<Song> list = songs;
         if (id == null || id < 1 || id > list.size()) return null;
         return list.get(id - 1);
+    }
+
+    /** Finds a song saved earlier (in a playlist) in today's library, by its audio address. */
+    public Integer idByUrl(String url) {
+        List<Song> list = songs;
+        Map<String, Integer> index = urlIndex;
+        if (indexedList != list) {
+            index = new java.util.HashMap<>();
+            for (Song song : list) index.putIfAbsent(song.getUrl(), song.getId());
+            urlIndex = index;
+            indexedList = list;
+        }
+        return index.get(url);
     }
 
     public Integer firstId() {

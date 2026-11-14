@@ -31,9 +31,24 @@ public class AuthController {
         return Map.of("username", user.username());
     }
 
+    public record RefreshRequest(String refreshToken) {}
+
+    /** Called by the client when its access token has expired (or is about to). */
+    @PostMapping("/refresh")
+    public AuthService.Login refresh(@RequestBody RefreshRequest body) {
+        return auth.refresh(body.refreshToken());
+    }
+
     @PostMapping("/logout")
-    public Map<String, Boolean> logout(@RequestHeader(value = "Authorization", required = false) String header) {
-        auth.logout(AuthService.bearer(header));
+    public Map<String, Boolean> logout(@RequestBody(required = false) RefreshRequest body) {
+        if (body != null) auth.logout(body.refreshToken());
         return Map.of("ok", true);
+    }
+
+    /** Lets the sign-up form say whether a username is free before the form is sent. */
+    @GetMapping("/available")
+    public Map<String, Object> available(@RequestParam String username) {
+        String problem = auth.usernameProblem(username);
+        return problem == null ? Map.of("available", true) : Map.of("available", false, "reason", problem);
     }
 }

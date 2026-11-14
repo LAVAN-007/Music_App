@@ -3,7 +3,7 @@ import { formatTime } from '../lib/util';
 import { categoryColor } from '../lib/categories';
 import { Artwork, CategoryTag, Icon, Spinner } from './ui';
 
-export default function NowPlaying({ song, state, player, libraryLoading, others, activity, volume, onVolume,
+export default function NowPlaying({ song, state, player, libraryLoading, others, solo, activity, volume, onVolume, muted, onMute,
   onToggle, onNext, onPrev, onSeek, onInvite }) {
   const [dragValue, setDragValue] = useState(null);
   const duration = player.duration || song?.duration || 0;
@@ -34,7 +34,8 @@ export default function NowPlaying({ song, state, player, libraryLoading, others
             {others.length > 2 ? ` +${others.length - 2}` : ''}</span>
         ) : (
           <button className="pill pill-action" onClick={onInvite}>
-            <Icon name="userAdd" size={15} /> You're the only one here — invite friends
+            <Icon name={solo ? 'people' : 'userAdd'} size={15} />
+            {solo ? 'Listening on your own · Invite friends' : "You're the only one here — invite friends"}
           </button>
         )}
       </div>
@@ -58,6 +59,7 @@ export default function NowPlaying({ song, state, player, libraryLoading, others
         )}
         <p className="now-activity" aria-live="polite">
           {player.failed ? "This track couldn't be loaded. Try skipping to the next one."
+            : muted ? 'Muted on your device only — everyone else still hears the music'
             : player.buffering ? 'Slow connection — catching up with the room…' : activity || ' '}
         </p>
       </div>
@@ -77,13 +79,14 @@ export default function NowPlaying({ song, state, player, libraryLoading, others
           <Icon name={playing ? 'pause' : 'play'} size={32} />
         </button>
         <button className="icon-btn large" onClick={onNext} aria-label="Next"><Icon name="next" size={28} /></button>
+        <button className={`icon-btn mute-btn ${muted ? 'on' : ''}`} onClick={onMute} aria-pressed={muted}
+          aria-label={muted ? 'Unmute' : 'Mute for me'} title={muted ? 'Unmute' : 'Mute for me only'}>
+          <Icon name={muted ? 'mute' : 'volume'} size={22} />
+        </button>
       </div>
 
       <div className="volume">
-        <button className="icon-btn small" onClick={() => onVolume(volume > 0 ? 0 : 0.8)}
-          aria-label={volume > 0 ? 'Mute' : 'Unmute'} title="Volume only changes on your device">
-          <Icon name={volume > 0 ? 'volume' : 'mute'} size={18} />
-        </button>
+        <span className="volume-label" title="Volume only changes on your device">Volume</span>
         <input type="range" className="range thin" aria-label="Volume" min={0} max={1} step={0.01} value={volume}
           style={{ '--fill': `${volume * 100}%` }} onChange={e => onVolume(parseFloat(e.target.value))} />
       </div>

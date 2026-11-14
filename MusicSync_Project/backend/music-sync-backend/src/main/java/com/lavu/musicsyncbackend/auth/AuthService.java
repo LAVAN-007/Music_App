@@ -38,9 +38,14 @@ public class AuthService {
     private final SecureRandom random = new SecureRandom();
     private final Map<String, long[]> failures = new ConcurrentHashMap<>(); // key -> {count, windowStart}
 
-    public AuthService(UserRepository users, SessionRepository sessions) {
+    private final JwtService jwt;
+    private final Presence presence;
+
+    public AuthService(UserRepository users, SessionRepository sessions, JwtService jwt, Presence presence) {
         this.users = users;
         this.sessions = sessions;
+        this.jwt = jwt;
+        this.presence = presence;
     }
 
     @PostConstruct
@@ -48,10 +53,26 @@ public class AuthService {
         sessions.deleteByExpiresAtLessThan(System.currentTimeMillis());
     }
 
-    public record Login(String token, String username) {}
+    /**
+     * @param token        access token (JWT), sent as {@code Authorization: Bearer} and valid for {@code expiresIn} seconds
+     * @param refreshToken long-lived secret that buys new access tokens; only its hash is stored
+     */
+    public record Login(String token, String refreshToken, String username, long expiresIn) {}
+
+    /** Why a username can't be registered, or null if it can. */
+    public String usernameProblem(String username) {
+        String display = clean(username);
+        if (!USERNAME.matcher(display).matches()) return "Use 3-20 characters: letters, numbers, spaces, . _ or -";
+        if (users.existsByUsername(display.toLowerCase())) return "That username is already taken";
+        return null;
+    }
+
+    private static String clean(String username) {
+        return username == null ? "" : username.trim().replaceAll("\\s+", " ");
+    }
 
     public Login register(String username, String password) {
-        String display = username == null ? "" : username.trim().replaceAll("\\s+", " ");
+        String display = clean(username);
         if (!USERNAME.matcher(display).matches()) {
             throw new ApiException(HttpStatus.BAD_REQUEST,
                     "Username must be 3-20 characters: letters, numbers, spaces, . _ or -");
@@ -72,7 +93,7 @@ public class AuthService {
         } catch (DataIntegrityViolationException e) { // lost a race with another registration
             throw new ApiException(HttpStatus.CONFLICT, "That username is already taken");
         }
-        return new Login(issueToken(user), user.getDisplayName());
+        return issue(user, null);
     }
 
     public Login login(String username, String password) {
@@ -97,23 +118,37 @@ public class AuthService {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Wrong username or password");
         }
         failures.remove(key);
-        return new Login(issueToken(user.get()), user.get().getDisplayName());
+        return issue(user.get(), null);
     }
 
+    /** Checks an access token. No database lookup: the signature and expiry are enough. */
     public Optional<AuthUser> authenticate(String token) {
         if (token == null || token.isBlank()) return Optional.empty();
-        Optional<Session> session = sessions.findByTokenHash(hash(token));
-        if (session.isEmpty()) return Optional.empty();
-        if (session.get().getExpiresAt() < System.currentTimeMillis()) {
-            sessions.delete(session.get());
-            return Optional.empty();
-        }
-        return users.findById(session.get().getUserId())
-                .map(u -> new AuthUser(u.getId(), u.getDisplayName()));
+        return jwt.verify(token);
     }
 
-    public void logout(String token) {
-        if (token != null && !token.isBlank()) sessions.deleteByTokenHash(hash(token));
+    /** Trades a refresh token for a new access token and keeps the session alive for another 30 days. */
+    public Login refresh(String refreshToken) {
+        Session session = refreshToken == null || refreshToken.isBlank() ? null
+                : sessions.findByTokenHash(hash(refreshToken)).orElse(null);
+        if (session != null && session.getExpiresAt() < System.currentTimeMillis()) {
+            sessions.delete(session);
+            session = null;
+        }
+        User user = session == null ? null : users.findById(session.getUserId()).orElse(null);
+        if (user == null) throw new ApiException(HttpStatus.UNAUTHORIZED, "Please sign in again");
+        session.setExpiresAt(System.currentTimeMillis() + SESSION_TTL_MS);
+        sessions.save(session);
+        return issue(user, new Object[]{session, refreshToken});
+    }
+
+    public void logout(String refreshToken) {
+        if (refreshToken == null || refreshToken.isBlank()) return;
+        sessions.findByTokenHash(hash(refreshToken)).ifPresent(session -> {
+            jwt.revoke(session.getId());
+            presence.gone(session.getUserId());
+            sessions.delete(session);
+        });
     }
 
     /** Extracts the token from an {@code Authorization: Bearer ...} header value. */
@@ -122,12 +157,22 @@ public class AuthService {
         return header.regionMatches(true, 0, "Bearer ", 0, 7) ? header.substring(7).trim() : null;
     }
 
-    private String issueToken(User user) {
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-        sessions.save(new Session(hash(token), user.getId(), System.currentTimeMillis() + SESSION_TTL_MS));
-        return token;
+    /** @param existing {session, refreshToken} when refreshing; null starts a new session */
+    private Login issue(User user, Object[] existing) {
+        Session session;
+        String refreshToken;
+        if (existing != null) {
+            session = (Session) existing[0];
+            refreshToken = (String) existing[1];
+        } else {
+            byte[] bytes = new byte[32];
+            random.nextBytes(bytes);
+            refreshToken = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+            session = sessions.save(new Session(hash(refreshToken), user.getId(), System.currentTimeMillis() + SESSION_TTL_MS));
+        }
+        AuthUser authUser = new AuthUser(user.getId(), user.getDisplayName());
+        presence.seen(user.getId());
+        return new Login(jwt.issue(authUser, session.getId()), refreshToken, user.getDisplayName(), JwtService.ACCESS_TTL_SECONDS);
     }
 
     private static String hash(String token) {

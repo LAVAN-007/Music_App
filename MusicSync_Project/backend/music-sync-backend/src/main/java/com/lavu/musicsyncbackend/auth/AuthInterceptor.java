@@ -16,8 +16,11 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     private final AuthService auth;
 
-    public AuthInterceptor(AuthService auth) {
+    private final Presence presence;
+
+    public AuthInterceptor(AuthService auth, Presence presence) {
         this.auth = auth;
+        this.presence = presence;
     }
 
     @Override
@@ -27,6 +30,7 @@ public class AuthInterceptor implements HandlerInterceptor {
         if (user.isEmpty()) {
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Please sign in again");
         }
+        presence.seen(user.get().id());
         request.setAttribute(USER_ATTR, user.get());
         return true;
     }

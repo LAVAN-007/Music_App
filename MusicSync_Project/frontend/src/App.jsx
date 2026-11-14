@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, getToken, setToken } from './lib/api';
+import { api, hasSession, setSession, signOut as endSession } from './lib/api';
 import { cleanRoomCode, ROOM_CODE_LENGTH } from './lib/util';
+import { playMessageSound } from './lib/sound';
 import { useLibrary } from './hooks/useLibrary';
+import { usePlaylists } from './hooks/usePlaylists';
+import { useFriends } from './hooks/useFriends';
 import AuthScreen from './components/AuthScreen';
-import Lobby from './components/Lobby';
-import Room from './components/Room';
+import { RoomScreen, SoloScreen } from './components/Room';
+import TogetherDialog from './components/TogetherDialog';
 import { Brand, Spinner } from './components/ui';
 
 const codeFromUrl = () => {
@@ -17,11 +20,13 @@ const setUrlRoom = (code) => {
 };
 
 export default function App() {
-  const [phase, setPhase] = useState(() => (getToken() ? 'boot' : 'auth')); // boot | auth | lobby | room
+  const [phase, setPhase] = useState(() => (hasSession() ? 'boot' : 'auth')); // boot | auth | home
   const [bootError, setBootError] = useState('');
   const [user, setUser] = useState('');
-  const [roomCode, setRoomCode] = useState('');
+  const [roomCode, setRoomCode] = useState(''); // empty: listening on your own
+  const [seed, setSeed] = useState(null); // what was playing when a room was started, to carry over
   const [invite, setInvite] = useState(codeFromUrl); // room to enter once signed in
+  const [togetherOpen, setTogetherOpen] = useState(false);
   const [toasts, setToasts] = useState([]);
   const toastId = useRef(0);
 
@@ -32,26 +37,35 @@ export default function App() {
   }, []);
 
   const signedOut = useCallback((message) => {
-    setToken(null);
+    setSession(null);
     setUser('');
     setRoomCode('');
+    setTogetherOpen(false);
     setPhase('auth');
     if (message) toast(message, 'error');
   }, [toast]);
   const onUnauthorized = useCallback(() => signedOut('Your session expired. Please sign in again.'), [signedOut]);
 
-  const library = useLibrary(phase === 'lobby' || phase === 'room', onUnauthorized);
+  const home = phase === 'home';
+  const library = useLibrary(home, onUnauthorized);
+  const playlists = usePlaylists(home, onUnauthorized);
+  const friends = useFriends(home, onUnauthorized, (name) => {
+    toast(`${name} sent you a friend request`);
+    playMessageSound();
+  });
 
   /** Enters a room after confirming it exists. Throws ApiError for the caller to display. */
-  const enterRoom = useCallback(async (code) => {
+  const enterRoom = useCallback(async (code, carry = null) => {
     const info = await api(`/rooms/${code}`);
+    setSeed(carry);
     setRoomCode(info.code);
     setUrlRoom(info.code);
     setInvite('');
-    setPhase('room');
+    setTogetherOpen(false);
+    setPhase('home');
   }, []);
 
-  /** Lands a signed-in user in the invited room if there is one, otherwise the lobby. */
+  /** Lands a signed-in user in the invited room if there is one, otherwise in their own player. */
   const land = useCallback(async (code) => {
     if (code) {
       try {
@@ -59,22 +73,22 @@ export default function App() {
         return;
       } catch (e) {
         if (e.status === 401) { onUnauthorized(); return; }
-        toast(e.status === 404 ? "That room has ended. Start a new one!" : e.message, 'error');
+        toast(e.status === 404 ? 'That room has ended. Start a new one!' : e.message, 'error');
         setInvite('');
         setUrlRoom('');
       }
     }
-    setPhase('lobby');
+    setPhase('home');
   }, [enterRoom, onUnauthorized, toast]);
 
   const boot = useCallback(async () => {
-    if (!getToken()) return; // signed out: the auth screen is already showing
+    if (!hasSession()) return; // signed out: the auth screen is already showing
     try {
       const me = await api('/auth/me');
       setUser(me.username);
       await land(codeFromUrl());
     } catch (e) {
-      if (e.status === 401) { setToken(null); setPhase('auth'); }
+      if (e.status === 401) { setSession(null); setPhase('auth'); }
       else setBootError(e.message);
     }
   }, [land]);
@@ -83,21 +97,22 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { boot(); }, []);
 
-  const onSignedIn = async ({ token, username }) => {
-    setToken(token);
-    setUser(username);
+  const onSignedIn = async (login) => {
+    setSession(login);
+    setUser(login.username);
     await land(invite);
   };
 
-  const createRoom = async () => {
+  /** @param carry { songId, position, playing } of the solo player, so the room continues the same song */
+  const createRoom = async (carry) => {
     const info = await api('/rooms', { method: 'POST' });
-    await enterRoom(info.code);
+    await enterRoom(info.code, carry);
   };
 
   const leaveRoom = useCallback(() => {
     setRoomCode('');
+    setSeed(null);
     setUrlRoom('');
-    setPhase('lobby');
   }, []);
 
   const roomGone = useCallback(() => {
@@ -105,11 +120,22 @@ export default function App() {
     toast('That room has ended.', 'error');
   }, [leaveRoom, toast]);
 
+  const joinFriend = useCallback(async (code) => {
+    try {
+      await enterRoom(code);
+    } catch (e) {
+      if (e.status === 401) onUnauthorized();
+      else toast(e.status === 404 ? 'That room has ended.' : e.message, 'error');
+    }
+  }, [enterRoom, onUnauthorized, toast]);
+
   const signOut = async () => {
-    try { await api('/auth/logout', { method: 'POST' }); } catch { /* the token is dropped locally either way */ }
+    await endSession();
     setUrlRoom('');
     signedOut();
   };
+
+  const carryRef = useRef(null); // filled by the solo player: () => what is playing now
 
   let screen;
   if (phase === 'boot') {
@@ -128,18 +154,23 @@ export default function App() {
     );
   } else if (phase === 'auth') {
     screen = <AuthScreen inviteCode={invite} onSignedIn={onSignedIn} />;
-  } else if (phase === 'lobby') {
-    screen = <Lobby user={user} onCreate={createRoom} onJoin={enterRoom} onSignOut={signOut} />;
   } else {
-    screen = (
-      <Room key={roomCode} code={roomCode} user={user} library={library} toast={toast}
+    const shared = { user, library, playlists, friends, toast, onJoinFriend: joinFriend, onSignOut: signOut };
+    screen = roomCode ? (
+      <RoomScreen key={roomCode} code={roomCode} seed={seed} {...shared}
         onLeave={leaveRoom} onGone={roomGone} onUnauthorized={onUnauthorized} />
+    ) : (
+      <SoloScreen key="solo" {...shared} carryRef={carryRef} onTogether={() => setTogetherOpen(true)} />
     );
   }
 
   return (
     <>
       {screen}
+      {togetherOpen && home && (
+        <TogetherDialog onCreate={() => createRoom(carryRef.current?.())} onJoin={enterRoom}
+          onClose={() => setTogetherOpen(false)} />
+      )}
       <div className="toasts" aria-live="polite">
         {toasts.map(t => <div key={t.id} className={`toast ${t.kind}`}>{t.text}</div>)}
       </div>

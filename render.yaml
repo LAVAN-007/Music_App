@@ -15,3 +15,6 @@ services:
         sync: false
       - key: SPRING_DATASOURCE_PASSWORD
         sync: false
+      # Signs the login tokens. Render generates it once and keeps it across deploys.
+      - key: MUSICSYNC_JWT_SECRET
+        generateValue: true

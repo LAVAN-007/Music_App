@@ -87,6 +87,19 @@ class RoomTests {
     }
 
     @Test
+    void aTrackOnlyEndsWhenTheRoomClockGetsThere() {
+        room.apply(cmd("SELECT", 2, null, null, null));
+        room.apply(cmd("PAUSE", null, 100.0, null, null));
+        room.apply(cmd("PLAY", null, null, null, null));
+        long version = room.state().version();
+
+        assertFalse(room.apply(cmd("ENDED", 2, 180.0, null, version)), "a listener whose clock runs ahead cannot cut the song short");
+        assertEquals(2, room.state().songId());
+        assertTrue(room.apply(cmd("ENDED", 2, 100.2, null, version)), "at the end (within tolerance) the room moves on");
+        assertEquals(3, room.state().songId());
+    }
+
+    @Test
     void prevGoesBackOrRestarts() {
         room.apply(cmd("SELECT", 4, null, null, null));
         room.apply(cmd("PREV", null, null, null, null));
