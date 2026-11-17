@@ -8,12 +8,9 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /api/time
     envVars:
-      # Postgres connection (e.g. a free Neon database). Entered in the Render dashboard, never committed.
-      - key: SPRING_DATASOURCE_URL
-        sync: false
-      - key: SPRING_DATASOURCE_USERNAME
-        sync: false
-      - key: SPRING_DATASOURCE_PASSWORD
+      # Postgres connection string from Neon (postgresql://user:password@host/db?sslmode=require).
+      # Entered in the Render dashboard, never committed.
+      - key: DATABASE_URL
         sync: false
       # Signs the login tokens. Render generates it once and keeps it across deploys.
       - key: MUSICSYNC_JWT_SECRET

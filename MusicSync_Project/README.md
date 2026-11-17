@@ -43,13 +43,11 @@ allow one-tap copy and the share sheet on secure pages.
 The repo has a `Dockerfile` (here) and a `render.yaml` (repository root) for a free Render web
 service. Render's free disk is wiped on every restart, so accounts go in a free Neon Postgres database.
 
-1. **Database.** Create a project at https://neon.com and open its connection details. From
-   `postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require` you need three values:
-   - `SPRING_DATASOURCE_URL` = `jdbc:postgresql://HOST/DBNAME?sslmode=require`
-   - `SPRING_DATASOURCE_USERNAME` = `USER`
-   - `SPRING_DATASOURCE_PASSWORD` = `PASSWORD`
+1. **Database.** Create a project at https://neon.com and copy its connection string
+   (`postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require`).
 2. **App.** Push the code to GitHub. At https://render.com choose **New → Blueprint**, pick the
-   repository and branch, and enter the three values when asked. The first build takes several minutes.
+   repository and branch, and paste the connection string as `DATABASE_URL` when asked. On an existing
+   service, add `DATABASE_URL` under **Environment** instead. The first build takes several minutes.
 3. Open the `https://<name>.onrender.com` address Render shows and share invite links from there.
 
 Free-plan behaviour: the service sleeps after 15 minutes with nobody connected and takes about a
@@ -69,7 +67,7 @@ line as `--name=value`.
 | Property | Default | Purpose |
 | --- | --- | --- |
 | `server.port` | `8080` | HTTP and WebSocket port |
-| `spring.datasource.url` | `jdbc:h2:file:./data/musicsync` | Accounts and sessions database |
+| `DATABASE_URL` (environment or `.env`) | not set | Postgres connection string; without it accounts go in a local H2 file |
 | `musicsync.jwt.secret` | random per start | Signs login tokens; set `MUSICSYNC_JWT_SECRET` when hosting |
 | `musicsync.catalog.remote` | `true` | `false` runs offline with a few royalty-free demo tracks |
 | `musicsync.catalog.cache-file` | `./data/catalog.json` | Where the song library is cached |

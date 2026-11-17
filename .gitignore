@@ -1,0 +1,4 @@
+# Secrets (database passwords, connection strings). Never commit these.
+.env
+.env.*
+!.env.example

@@ -167,6 +167,18 @@ class RoomTests {
     }
 
     @Test
+    void aProviderConnectionStringBecomesJdbcSettings() throws Exception {
+        java.lang.reflect.Method parse = com.lavu.musicsyncbackend.config.DatabaseUrl.class.getDeclaredMethod("parse", String.class);
+        parse.setAccessible(true);
+        String[] parts = (String[]) parse.invoke(null, "postgresql://owner:p%40ss@db.example.com/main?sslmode=require&channel_binding=require");
+        assertEquals("jdbc:postgresql://db.example.com/main?sslmode=require", parts[0]);
+        assertEquals("owner", parts[1]);
+        assertEquals("p@ss", parts[2], "the password is decoded and kept out of the address");
+        String[] withPort = (String[]) parse.invoke(null, "postgres://u:p@localhost:5433/app");
+        assertEquals("jdbc:postgresql://localhost:5433/app", withPort[0]);
+    }
+
+    @Test
     void prevGoesBackOrRestarts() {
         room.apply(cmd("SELECT", 4, null, null, null));
         room.apply(cmd("PREV", null, null, null, null));
